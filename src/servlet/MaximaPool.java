@@ -351,6 +351,7 @@ public class MaximaPool extends HttpServlet {
 	}
 
 	class MaximaProcess {
+		public static final long STARTUP_TIMEOUT = 10000; // miliseconds
 		Process process = null;
 
 		boolean ready = false;
@@ -393,6 +394,9 @@ public class MaximaPool extends HttpServlet {
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
+				if (System.currentTimeMillis() > startupTime + STARTUP_TIMEOUT) {
+					throw new RuntimeException("Process start timeout");
+				}
 			}
 			if (load == null) {
 				ready = true;
@@ -401,7 +405,8 @@ public class MaximaPool extends HttpServlet {
 			}
 
 			try {
-				input.write("load(\"" + load.getCanonicalPath() + "\");\n");
+				String command = "load(\"" + load.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\") + "\");\n";
+				input.write(command);
 				input.flush();
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -414,6 +419,9 @@ public class MaximaPool extends HttpServlet {
 					Thread.sleep(0, 200);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
+				}
+				if (System.currentTimeMillis() > startupTime + STARTUP_TIMEOUT) {
+					throw new RuntimeException("Process start timeout");
 				}
 			}
 
