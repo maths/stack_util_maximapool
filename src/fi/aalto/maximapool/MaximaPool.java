@@ -257,6 +257,101 @@ public class MaximaPool extends HttpServlet {
 		}
 	}
 
+	void doHealthcheck(HttpServletRequest request,
+			HttpServletResponse response) throws ServletException, IOException {
+		response.setStatus(200);
+		response.setContentType("text/html");
+
+		Writer out = response.getWriter();
+
+		out.write("<p>Trying to start a Maxima process.</p>");
+		out.flush();
+
+		out.write("<p>Executing command-line: " + cmdLine + "</p>");
+		out.flush();
+
+		Process process = null;
+		long startupTime = System.currentTimeMillis();
+		try {
+			process = processBuilder.start();
+		} catch (IOException e) {
+			System.out.println("Process startup failure...");
+			e.printStackTrace();
+			return;
+		}
+
+		Semaphore runSwitch = new Semaphore(1);
+
+		InputStreamReaderSucker output = new InputStreamReaderSucker(new BufferedReader(
+				new InputStreamReader(new BufferedInputStream(
+						process.getInputStream()))), runSwitch);
+		OutputStreamWriter input = new OutputStreamWriter(new BufferedOutputStream(
+				process.getOutputStream()));
+
+		String test = loadReady;
+
+		if (load == null)
+			test = useReady;
+
+		out.write("<p>Waiting for it to be ready ...</p>");
+		out.flush();
+
+		String currentOutput = "";
+		while ((output.currentValue().indexOf(test)) < 0) {
+			try {
+				Thread.sleep(0, 200);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			if (System.currentTimeMillis() > startupTime + 10000) {
+				throw new RuntimeException("Process start timeout");
+			}
+			if (!currentOutput.equals(output.currentValue())) {
+				out.write("<pre>" + output.currentValue() + "</pre>");
+				out.flush();
+			}
+		}
+
+		if (!currentOutput.equals(output.currentValue())) {
+			out.write("<pre>" + output.currentValue() + "</pre>");
+			out.flush();
+		}
+
+		String command = "load(\"" + load.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\") + "\");\n";
+		out.write("<p>Sending command: " + command + "</p>");
+		try {
+			input.write(command);
+			input.flush();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
+		test = useReady;
+
+		while (output.currentValue().indexOf(test) < 0) {
+			try {
+				Thread.sleep(0, 200);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			if (System.currentTimeMillis() > startupTime + 10000) {
+				throw new RuntimeException("Load command timeout");
+			}
+			if (!currentOutput.equals(output.currentValue())) {
+				out.write("<pre>" + output.currentValue() + "</pre>");
+				out.flush();
+			}
+		}
+
+		if (!currentOutput.equals(output.currentValue())) {
+			out.write("<pre>" + output.currentValue() + "</pre>");
+			out.flush();
+		}
+
+		startupTime = System.currentTimeMillis() - startupTime;
+		out.write("<p>startupTime = " + startupTime + "</p>");
+	}
+
 	/**
 	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse
 	 *      response)
