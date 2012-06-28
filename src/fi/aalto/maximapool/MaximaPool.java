@@ -4,6 +4,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
@@ -16,6 +17,8 @@ import java.util.Properties;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.Semaphore;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -58,6 +61,9 @@ public class MaximaPool extends HttpServlet {
 	private int poolMax = 100;
 	private int startupLimit = 20;
 
+	private boolean fileHandling = false;
+	private String pathCommandTemplate = "TMP_IMG_DIR: \"%WORK-DIR%\"; IMG_DIR: \"%OUTPUT-DIR%\";";
+
 	private String killString = "--COMPLETED--kill--PROCESS--";
 	private String cmdLine = "maxima";
 	private File cwd = new File(".");
@@ -86,8 +92,8 @@ public class MaximaPool extends HttpServlet {
 			properties.load(Thread.currentThread().getContextClassLoader()
 					.getResourceAsStream("maximapool.conf"));
 
-                        updateCycle = Long.parseLong(properties.getProperty(
-                                        "pool.update.cycle", "500"));
+			updateCycle = Long.parseLong(properties.getProperty(
+					"pool.update.cycle", "500"));
 			startupTimeEstimate = Long.parseLong(properties.getProperty(
 					"pool.adaptation.startuptime.initial.estimate", "2000"));
 			demandEstimate = Double.parseDouble(properties.getProperty(
@@ -111,6 +117,11 @@ public class MaximaPool extends HttpServlet {
 			load = new File(properties.getProperty("maxima.load", "false"));
 			if (load.getName().equals("false"))
 				load = null;
+
+			fileHandling = properties.getProperty("file.handling", "false")
+					.equalsIgnoreCase("true");
+			pathCommandTemplate = properties.getProperty("maxima.path.command",
+					"TMP_IMG_DIR: \"%WORK-DIR%\"; IMG_DIR: \"%OUTPUT-DIR%\";");
 
 			executionTime = Long.parseLong(properties.getProperty(
 					"pool.execution.time.limit", "30000"));
@@ -150,21 +161,21 @@ public class MaximaPool extends HttpServlet {
 					long testTime = System.currentTimeMillis();
 
 					// Kill off old ones
-					MaximaProcess mp=null;
+					MaximaProcess mp = null;
 					try {
 						mp = pool.take();
 					} catch (InterruptedException e1) {
-						mp=null;
+						mp = null;
 					}
-					while (mp!=null&&mp.liveTill < testTime) {
+					while (mp != null && mp.liveTill < testTime) {
 						mp.kill();
 						try {
 							mp = pool.take();
 						} catch (InterruptedException e) {
-							mp=null;
+							mp = null;
 						}
 					}
-					if(mp!=null)
+					if (mp != null)
 						pool.addFirst(mp);
 
 					while (usedPool.size() > 0
@@ -257,10 +268,12 @@ public class MaximaPool extends HttpServlet {
 
 		Writer out = response.getWriter();
 
-		out.write("<html><head><title>MaximaPool - status display</title></head><body>");
+		out
+				.write("<html><head><title>MaximaPool - status display</title></head><body>");
 
 		out.write("<h3>Numbers</h3>");
-		out.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
+		out
+				.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
 
 		out.write("<tr><td>Ready processes in the pool:</td><td>" + pool.size()
 				+ "</td></tr>");
@@ -275,7 +288,8 @@ public class MaximaPool extends HttpServlet {
 
 		out.write("<h3>Test form</h3>");
 		out.write("<p>Input something for evaluation</p>");
-		out.write("<form method='POST'><textarea name='input'></textarea><br/>Timeout (ms): <select name='timeout'><option value='1000'>1000</option><option value='2000'>2000</option><option value='3000' selected='selected'>3000</option><option value='4000'>4000</option><option value='5000'>5000</option></select><br/><input type='submit' value='Eval'/></form>");
+		out
+				.write("<form method='POST'><textarea name='input'></textarea><br/>Timeout (ms): <select name='timeout'><option value='1000'>1000</option><option value='2000'>2000</option><option value='3000' selected='selected'>3000</option><option value='4000'>4000</option><option value='5000'>5000</option></select><br/><input type='submit' value='Eval'/></form>");
 
 		out.write("</body></html>");
 	}
@@ -293,39 +307,62 @@ public class MaximaPool extends HttpServlet {
 		// use this.
 		MaximaProcess mp = getProcess();
 
-		long limit=3000;
-		if(request.getParameter("timeout")!=null)
-			try{
-				limit=Long.parseLong(request.getParameter("timeout"));
+		long limit = 3000;
+		if (request.getParameter("timeout") != null)
+			try {
+				limit = Long.parseLong(request.getParameter("timeout"));
 			} catch (NumberFormatException e) {
 				e.printStackTrace();
 			}
 
-		if(mp.doAndDie(theInput,limit))
+		if (mp.doAndDie(theInput, limit))
 			response.setStatus(200);
 		else
 			response.setStatus(416);
 
-		String out=mp.output.currentValue();
+		String out = mp.output.currentValue();
+		if (out.indexOf("\"" + killString) > 0)
+			out = out.substring(0, out.indexOf("\"" + killString));
+		else if (out.indexOf(killString) > 0)
+			out = out.substring(0, out.indexOf(killString));
 
 		usedPool.remove(mp);
 
-		response.setContentType("text/plain");
+		if (fileHandling && mp.filesGenerated().size() > 0) {
+			response.setContentType("application/zip");
+			ZipOutputStream zos = new ZipOutputStream(response
+					.getOutputStream());
 
-		// Some settings give that "
-		if (out.indexOf("\"" + killString) > 0)
-			response.getWriter().write(
-					out.substring(0, out.indexOf("\"" + killString)));
-		else if (out.indexOf(killString) > 0)
-			response.getWriter().write(
-					out.substring(0, out.indexOf(killString)));
-		else
+			byte[] buffy = new byte[4096];
+			int c = -1;
+			ZipEntry z = new ZipEntry("OUTPUT");
+			zos.putNextEntry(z);
+			zos.write(out.getBytes());
+			zos.closeEntry();
+			for (File f : mp.filesGenerated()) {
+				String name = f.getCanonicalPath().replace(
+						new File(mp.baseDir, "output").getCanonicalPath(), "");
+				z = new ZipEntry(name);
+				zos.putNextEntry(z);
+				FileInputStream fis = new FileInputStream(f);
+				c = fis.read(buffy);
+				while (c > 0) {
+					zos.write(buffy, 0, c);
+					c = fis.read(buffy);
+				}
+				fis.close();
+				zos.closeEntry();
+			}
+			zos.finish();
+		} else {
+			response.setContentType("text/plain");
 			response.getWriter().write(out);
+		}
 	}
 
 	private MaximaProcess getProcess() {
 		// Start a new one as we are going to take one...
-		if(startupThrotle.availablePermits() > 0){
+		if (startupThrotle.availablePermits() > 0) {
 			Starter starter = new Starter();
 			starter.start();
 		}
@@ -351,9 +388,11 @@ public class MaximaPool extends HttpServlet {
 	}
 
 	class MaximaProcess {
-       	        public static final long STARTUP_TIMEOUT = 10000; // miliseconds
+		public static final long STARTUP_TIMEOUT = 10000; // miliseconds
 
-         	Process process = null;
+		Process process = null;
+
+		File baseDir = null;
 
 		boolean ready = false;
 		long startupTime = -1;
@@ -379,10 +418,10 @@ public class MaximaPool extends HttpServlet {
 			}
 
 			output = new InputStreamReaderSucker(new BufferedReader(
-					new InputStreamReader(new BufferedInputStream(
-							process.getInputStream()))), runSwitch);
-			input = new OutputStreamWriter(new BufferedOutputStream(
-					process.getOutputStream()));
+					new InputStreamReader(new BufferedInputStream(process
+							.getInputStream()))), runSwitch);
+			input = new OutputStreamWriter(new BufferedOutputStream(process
+					.getOutputStream()));
 
 			String test = loadReady;
 
@@ -395,19 +434,23 @@ public class MaximaPool extends HttpServlet {
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
-                         	if (System.currentTimeMillis() > startupTime + STARTUP_TIMEOUT) {
-                                        throw new RuntimeException("Process start timeout");
-                                }
-          		}
+				if (System.currentTimeMillis() > startupTime + STARTUP_TIMEOUT) {
+					throw new RuntimeException("Process start timeout");
+				}
+			}
 			if (load == null) {
 				ready = true;
+				if (fileHandling)
+					setupFiles();
 				startupTime = System.currentTimeMillis() - startupTime;
 				return;
 			}
 
 			try {
-                                String command = "load(\"" + load.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\") + "\");\n";
-                                input.write(command);
+				String command = "load(\""
+						+ load.getCanonicalPath()
+								.replaceAll("\\\\", "\\\\\\\\") + "\");\n";
+				input.write(command);
 
 				input.flush();
 			} catch (IOException e) {
@@ -422,13 +465,44 @@ public class MaximaPool extends HttpServlet {
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
-                                if (System.currentTimeMillis() > startupTime + STARTUP_TIMEOUT) {
-                                        throw new RuntimeException("Process start timeout");
-                                }
+				if (System.currentTimeMillis() > startupTime + STARTUP_TIMEOUT) {
+					throw new RuntimeException("Process start timeout");
+				}
 			}
 
 			ready = true;
+			if (fileHandling)
+				setupFiles();
 			startupTime = System.currentTimeMillis() - startupTime;
+
+		}
+
+		private void setupFiles() {
+			try {
+				baseDir = File.createTempFile("mp-", "-" + process.hashCode());
+				baseDir.delete();
+				baseDir.mkdirs();
+				File output = new File(baseDir, "output");
+				File work = new File(baseDir, "work");
+				output.mkdir();
+				work.mkdir();
+
+				String command = pathCommandTemplate;
+				command = command.replaceAll("%OUTPUT-DIR-NE%", output
+						.getCanonicalPath());
+				command = command.replaceAll("%WORK-DIR-NE%", work
+						.getCanonicalPath());
+				command = command.replaceAll("%OUTPUT-DIR%", output
+						.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\"));
+				command = command.replaceAll("%WORK-DIR%", work
+						.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\"));
+				input.write(command);
+				input.flush();
+			} catch (IOException e) {
+				System.out
+						.println("File handling failure, maybe the securitymanager has something against us?");
+				e.printStackTrace();
+			}
 		}
 
 		void activate() {
@@ -446,11 +520,13 @@ public class MaximaPool extends HttpServlet {
 
 		/**
 		 * Returns true if we did not timeout...
+		 * 
 		 * @param command
-		 * @param timeout limit in ms
+		 * @param timeout
+		 *            limit in ms
 		 * @return
 		 */
-		boolean doAndDie(String command,long timeout) {
+		boolean doAndDie(String command, long timeout) {
 			String killStringGen = "concat(\""
 					+ killString.substring(0, killString.length() / 2)
 					+ "\",\"" + killString.substring(killString.length() / 2)
@@ -539,18 +615,29 @@ public class MaximaPool extends HttpServlet {
 			}
 		}
 
+		List<File> filesGenerated() {
+			return listFilesInOrder(new File(baseDir, "output"), false);
+		}
+
 		@Override
 		protected void finalize() throws Throwable {
 			kill();
+			if (fileHandling) {
+				for (File f : listFilesInOrder(baseDir, true)) {
+					f.delete();
+				}
+				baseDir.delete();
+			}
+
 			super.finalize();
 		}
 	}
 
 	/**
 	 * an utility for fast reading of STDOUT & STDERR...
-	 *
+	 * 
 	 * @author Matti Harjula
-	 *
+	 * 
 	 */
 	class InputStreamReaderSucker {
 
@@ -626,6 +713,29 @@ public class MaximaPool extends HttpServlet {
 		String currentValue() {
 			return value.toString();
 		}
+	}
+
+	/**
+	 * Lists all the files under this dir if sub dirs are listed they are listed
+	 * in such an order that you may delete all the files in the order of the
+	 * list.
+	 * 
+	 * @param baseDir
+	 * @param listDirs
+	 * @return
+	 */
+	public static List<File> listFilesInOrder(File baseDir, boolean listDirs) {
+		List<File> R = new LinkedList<File>();
+
+		for (File f : baseDir.listFiles())
+			if (f.isDirectory()) {
+				R.addAll(listFilesInOrder(f, listDirs));
+				if (listDirs)
+					R.add(f);
+			} else
+				R.add(f);
+
+		return R;
 	}
 
 }
