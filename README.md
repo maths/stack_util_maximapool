@@ -35,11 +35,11 @@ Download or clone the MaximaPool files somewhere and start working with the maxi
 
 Once the servlet has been built deploy the MaximaPool.war file to your servlet-container, with tomcat just copy it to the webapps-directory.
 
-With Stack check that tomcat or whatever user is running the servlet-container and thus maxima has the correct permissions to write to Stacks work directorys. Otherwise plots cannot be generated.
+With Stack check that tomcat or whatever user is running the servlet-container and thus maxima has the correct permissions to write to Stacks work directorys. Otherwise plots cannot be generated. Or setup the servlet in remote operating mode so that it can transmit possible plots in the responses.
 
 Open localhost:8080/MaximaPool/MaximaPool or whatever url you have configured and test the servlet by inputting something.
 
-Change Stack to use MaximaPool and set the maxima-command in Stack to match the url where the servlet is running.
+Change Stack to use MaximaPool and set the maxima-command in Stack to match the url where the servlet is running. Or use the Server mode with if you cannot setup the system so that it would write plots to the correct place.
 
 You may wish to clear the caches to check that the servlet actually works otherwise you may just get old values from cache instead of new ones from the servlet.
 
