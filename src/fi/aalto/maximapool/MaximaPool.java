@@ -257,23 +257,146 @@ public class MaximaPool extends HttpServlet {
 		}
 	}
 
-	/**
-	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse
-	 *      response)
-	 */
-	protected void doGet(HttpServletRequest request,
+	public void doHealthcheck(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
 		response.setStatus(200);
 		response.setContentType("text/html");
 
 		Writer out = response.getWriter();
 
-		out
-				.write("<html><head><title>MaximaPool - status display</title></head><body>");
+		out.write("<html><head>" +
+				"<title>MaximaPool - health-check</title>" +
+				"<style type=\"text/css\">" +
+					"pre { padding: 0.5em; background: #eee; }" +
+					"pre.command { background: #dfd; }" +
+				"</style>" +
+				"</head><body>");
+
+		out.write("<p>Trying to start a Maxima process.</p>");
+		out.flush();
+
+		out.write("<p>Executing command-line: " + cmdLine + "</p>");
+		out.flush();
+
+		String currentOutput = "";
+
+		Process process = null;
+		long startupTime = System.currentTimeMillis();
+		try {
+			process = processBuilder.start();
+		} catch (IOException e) {
+			System.out.println("Process startup failure...");
+			e.printStackTrace();
+			return;
+		}
+
+		Semaphore runSwitch = new Semaphore(1);
+
+		InputStreamReaderSucker output = new InputStreamReaderSucker(new BufferedReader(
+				new InputStreamReader(new BufferedInputStream(
+						process.getInputStream()))), runSwitch);
+		OutputStreamWriter input = new OutputStreamWriter(new BufferedOutputStream(
+				process.getOutputStream()));
+
+		String test = loadReady;
+
+		if (load == null) {
+			test = useReady;
+		}
+
+		currentOutput = healthcheckWaitForOutput(test, output, currentOutput, out, startupTime);
+
+		String command = "load(\"" + load.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\") + "\");\n";
+		healthcheckSendCommand(command, input, out);
+		currentOutput = healthcheckWaitForOutput(useReady, output, currentOutput, out, startupTime);
+
+		out.write("<p>startupTime = " + (System.currentTimeMillis() - startupTime) + "</p>");
+
+		String killStringGen = "concat(\""
+				+ killString.substring(0, killString.length() / 2)
+				+ "\",\"" + killString.substring(killString.length() / 2)
+				+ "\");\n";
+
+		healthcheckSendCommand("1+1;\n" + killStringGen, input, out);
+		currentOutput = healthcheckWaitForOutput(killString, output, currentOutput, out, startupTime);
+
+		healthcheckSendCommand("quit();\n", input, out);
+		input.close();
+
+		out.write("</body></html>");
+	}
+
+	protected void healthcheckSendCommand(String command, OutputStreamWriter input, Writer out)
+			throws IOException {
+		out.write("<p>Sending command:</p><pre class=\"command\">" + command + "</pre>");
+		try {
+			input.write(command);
+			input.flush();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	private String healthcheckWaitForOutput(String test,
+			InputStreamReaderSucker output, String previousOutput, Writer out, long startupTime)
+			throws IOException {
+
+		out.write("<p>Waiting for target text: <b>" + test + "</b></p>");
+		out.flush();
+
+		while (true) {
+			try {
+				Thread.sleep(0, 200);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+
+			if (System.currentTimeMillis() > startupTime + 10000) {
+				out.write("<p>Timeout!</p>");
+				out.flush();
+				throw new RuntimeException("Timeout");
+			}
+
+			String currentOutput = output.currentValue();
+
+			if (!currentOutput.equals(previousOutput)) {
+				out.write("<pre>" + currentOutput.substring(previousOutput.length()) + "</pre>");
+				previousOutput = currentOutput;
+				out.flush();
+			}
+
+			if (previousOutput.indexOf(test) >= 0) {
+				break;
+			}
+		}
+
+		return previousOutput;
+	}
+
+	/**
+	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse
+	 *      response)
+	 */
+	protected void doGet(HttpServletRequest request,
+			HttpServletResponse response) throws ServletException, IOException {
+
+		if ("healthcheck=1".equals(request.getQueryString())) {
+			doHealthcheck(request, response);
+			return;
+		}
+
+		response.setStatus(200);
+		response.setContentType("text/html");
+
+		Writer out = response.getWriter();
+
+		out.write("<html><head><title>MaximaPool - status display</title></head><body>");
+
+		out.write("<h3>Health-check</h3>");
+		out.write("<p><A href=\"?healthcheck=1\">Run the health-check</a></p>");
 
 		out.write("<h3>Numbers</h3>");
-		out
-				.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
+		out.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
 
 		out.write("<tr><td>Ready processes in the pool:</td><td>" + pool.size()
 				+ "</td></tr>");
@@ -288,8 +411,7 @@ public class MaximaPool extends HttpServlet {
 
 		out.write("<h3>Test form</h3>");
 		out.write("<p>Input something for evaluation</p>");
-		out
-				.write("<form method='POST'><textarea name='input'></textarea><br/>Timeout (ms): <select name='timeout'><option value='1000'>1000</option><option value='2000'>2000</option><option value='3000' selected='selected'>3000</option><option value='4000'>4000</option><option value='5000'>5000</option></select><br/><input type='submit' value='Eval'/></form>");
+		out.write("<form method='POST'><textarea name='input'></textarea><br/>Timeout (ms): <select name='timeout'><option value='1000'>1000</option><option value='2000'>2000</option><option value='3000' selected='selected'>3000</option><option value='4000'>4000</option><option value='5000'>5000</option></select><br/><input type='submit' value='Eval'/></form>");
 
 		out.write("</body></html>");
 	}
