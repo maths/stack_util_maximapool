@@ -257,18 +257,28 @@ public class MaximaPool extends HttpServlet {
 		}
 	}
 
-	void doHealthcheck(HttpServletRequest request,
+	public void doHealthcheck(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
 		response.setStatus(200);
 		response.setContentType("text/html");
 
 		Writer out = response.getWriter();
 
+		out.write("<html><head>" +
+				"<title>MaximaPool - health-check</title>" +
+				"<style type=\"text/css\">" +
+					"pre { padding: 0.5em; background: #eee; }" +
+					"pre.command { background: #dfd; }" +
+				"</style>" +
+				"</head><body>");
+
 		out.write("<p>Trying to start a Maxima process.</p>");
 		out.flush();
 
 		out.write("<p>Executing command-line: " + cmdLine + "</p>");
 		out.flush();
+
+		String currentOutput = "";
 
 		Process process = null;
 		long startupTime = System.currentTimeMillis();
@@ -290,66 +300,77 @@ public class MaximaPool extends HttpServlet {
 
 		String test = loadReady;
 
-		if (load == null)
+		if (load == null) {
 			test = useReady;
-
-		out.write("<p>Waiting for it to be ready ...</p>");
-		out.flush();
-
-		String currentOutput = "";
-		while ((output.currentValue().indexOf(test)) < 0) {
-			try {
-				Thread.sleep(0, 200);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
-			if (System.currentTimeMillis() > startupTime + 10000) {
-				throw new RuntimeException("Process start timeout");
-			}
-			if (!currentOutput.equals(output.currentValue())) {
-				out.write("<pre>" + output.currentValue() + "</pre>");
-				out.flush();
-			}
 		}
 
-		if (!currentOutput.equals(output.currentValue())) {
-			out.write("<pre>" + output.currentValue() + "</pre>");
-			out.flush();
-		}
+		currentOutput = healthcheckWaitForOutput(test, output, currentOutput, out, startupTime);
 
 		String command = "load(\"" + load.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\") + "\");\n";
-		out.write("<p>Sending command: " + command + "</p>");
+		healthcheckSendCommand(command, input, out);
+		currentOutput = healthcheckWaitForOutput(useReady, output, currentOutput, out, startupTime);
+
+		out.write("<p>startupTime = " + (System.currentTimeMillis() - startupTime) + "</p>");
+
+		String killStringGen = "concat(\""
+				+ killString.substring(0, killString.length() / 2)
+				+ "\",\"" + killString.substring(killString.length() / 2)
+				+ "\");\n";
+
+		healthcheckSendCommand("1+1;\n" + killStringGen, input, out);
+		currentOutput = healthcheckWaitForOutput(killString, output, currentOutput, out, startupTime);
+
+		healthcheckSendCommand("quit();\n", input, out);
+		input.close();
+
+		out.write("</body></html>");
+	}
+
+	protected void healthcheckSendCommand(String command, OutputStreamWriter input, Writer out)
+			throws IOException {
+		out.write("<p>Sending command:</p><pre class=\"command\">" + command + "</pre>");
 		try {
 			input.write(command);
 			input.flush();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+	}
 
-		test = useReady;
+	private String healthcheckWaitForOutput(String test,
+			InputStreamReaderSucker output, String previousOutput, Writer out, long startupTime)
+			throws IOException {
 
-		while (output.currentValue().indexOf(test) < 0) {
+		out.write("<p>Waiting for target text: <b>" + test + "</b></p>");
+		out.flush();
+
+		while (true) {
 			try {
 				Thread.sleep(0, 200);
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
+
 			if (System.currentTimeMillis() > startupTime + 10000) {
-				throw new RuntimeException("Load command timeout");
+				out.write("<p>Timeout!</p>");
+				out.flush();
+				throw new RuntimeException("Timeout");
 			}
-			if (!currentOutput.equals(output.currentValue())) {
-				out.write("<pre>" + output.currentValue() + "</pre>");
+
+			String currentOutput = output.currentValue();
+
+			if (!currentOutput.equals(previousOutput)) {
+				out.write("<pre>" + currentOutput.substring(previousOutput.length()) + "</pre>");
+				previousOutput = currentOutput;
 				out.flush();
 			}
+
+			if (previousOutput.indexOf(test) >= 0) {
+				break;
+			}
 		}
 
-		if (!currentOutput.equals(output.currentValue())) {
-			out.write("<pre>" + output.currentValue() + "</pre>");
-			out.flush();
-		}
-
-		startupTime = System.currentTimeMillis() - startupTime;
-		out.write("<p>startupTime = " + startupTime + "</p>");
+		return previousOutput;
 	}
 
 	/**
@@ -358,17 +379,24 @@ public class MaximaPool extends HttpServlet {
 	 */
 	protected void doGet(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
+
+		if ("healthcheck=1".equals(request.getQueryString())) {
+			doHealthcheck(request, response);
+			return;
+		}
+
 		response.setStatus(200);
 		response.setContentType("text/html");
 
 		Writer out = response.getWriter();
 
-		out
-				.write("<html><head><title>MaximaPool - status display</title></head><body>");
+		out.write("<html><head><title>MaximaPool - status display</title></head><body>");
+
+		out.write("<h3>Health-check</h3>");
+		out.write("<p><A href=\"?healthcheck=1\">Run the health-check</a></p>");
 
 		out.write("<h3>Numbers</h3>");
-		out
-				.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
+		out.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
 
 		out.write("<tr><td>Ready processes in the pool:</td><td>" + pool.size()
 				+ "</td></tr>");
@@ -383,8 +411,7 @@ public class MaximaPool extends HttpServlet {
 
 		out.write("<h3>Test form</h3>");
 		out.write("<p>Input something for evaluation</p>");
-		out
-				.write("<form method='POST'><textarea name='input'></textarea><br/>Timeout (ms): <select name='timeout'><option value='1000'>1000</option><option value='2000'>2000</option><option value='3000' selected='selected'>3000</option><option value='4000'>4000</option><option value='5000'>5000</option></select><br/><input type='submit' value='Eval'/></form>");
+		out.write("<form method='POST'><textarea name='input'></textarea><br/>Timeout (ms): <select name='timeout'><option value='1000'>1000</option><option value='2000'>2000</option><option value='3000' selected='selected'>3000</option><option value='4000'>4000</option><option value='5000'>5000</option></select><br/><input type='submit' value='Eval'/></form>");
 
 		out.write("</body></html>");
 	}
