@@ -307,8 +307,10 @@ public class MaximaPool extends HttpServlet {
 		currentOutput = healthcheckWaitForOutput(test, output, currentOutput, out, startupTime);
 
 		String command = "load(\"" + load.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\") + "\");\n";
-		healthcheckSendCommand(command, input, out);
-		currentOutput = healthcheckWaitForOutput(useReady, output, currentOutput, out, startupTime);
+		if (load != null) {
+			healthcheckSendCommand(command, input, out);
+			currentOutput = healthcheckWaitForOutput(useReady, output, currentOutput, out, startupTime);
+		}
 
 		out.write("<p>startupTime = " + (System.currentTimeMillis() - startupTime) + "</p>");
 
