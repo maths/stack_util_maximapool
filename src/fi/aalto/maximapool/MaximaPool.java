@@ -514,8 +514,9 @@ public class MaximaPool extends HttpServlet {
 		out.write("<tr><td>Servlet started:</td><td>" + upSinceTime + " " + upSinceDate
 				+ " (" + uptimeDays + " days, " + uptimeHours + " hours, " + uptimeMinutes
 				+ " minutes ago)</td></tr>");
-		out.write("<tr><td>Free memory:</td><td>" + rt.freeMemory() + " out of "
-				+ rt.totalMemory() + " total memory (" + rt.maxMemory() + " max limit)."
+		out.write("<tr><td>Free memory:</td><td>" + StringUtils.formatBytes(rt.freeMemory())
+				+ " out of " + StringUtils.formatBytes(rt.totalMemory()) + " total memory (" +
+				StringUtils.formatBytes(rt.maxMemory()) + " max limit)."
 				+ "</td></tr>");
 		out.write("<tr><td>Active threads:</td><td>" + Thread.activeCount()
 				+ "</td></tr>");
