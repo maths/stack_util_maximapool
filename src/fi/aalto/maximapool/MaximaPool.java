@@ -8,7 +8,9 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
 import java.io.Reader;
+import java.io.StringWriter;
 import java.io.Writer;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
@@ -89,16 +91,16 @@ public class MaximaPool extends HttpServlet {
 
 	private long servletStartTime;
 
-	/**
-	 * @see HttpServlet#HttpServlet()
-	 */
-	public MaximaPool() {
-		super();
+	private UpkeepThread upKeep;
+
+	@Override
+	public void init() throws ServletException {
+		super.init();
 
 		servletStartTime = System.currentTimeMillis();
 
 		try {
-			// load properties
+			// Load properties.
 			properties.load(Thread.currentThread().getContextClassLoader()
 					.getResourceAsStream("maximapool.conf"));
 
@@ -138,11 +140,11 @@ public class MaximaPool extends HttpServlet {
 			lifeTime = Long.parseLong(properties.getProperty(
 					"pool.process.lifetime", "60000000"));
 
-			// init the datasets
+			// Initialise the datasets.
 			startupTimeHistory.add(startupTimeEstimate);
 			requestTimeHistory.add(System.currentTimeMillis());
 
-			// setup the processBuilder
+			// Set up the processBuilder
 			processBuilder.command(cmdLine);
 			processBuilder.directory(cwd);
 			processBuilder.redirectErrorStream(true);
@@ -151,100 +153,30 @@ public class MaximaPool extends HttpServlet {
 			e.printStackTrace();
 		}
 
+		// Create the startup throttle.
 		this.startupThrotle = new Semaphore(startupLimit);
 
-		/**
-		 * Lets try to kill the processes when the server shuts down...
-		 */
-		Runtime.getRuntime().addShutdownHook(new Thread() {
-			public void run() {
-				for (fi.aalto.maximapool.MaximaPool.MaximaProcess mp : pool)
-					mp.kill();
-				pool.clear();
-			}
-		});
-
-		Thread upKeep = new Thread() {
-			public void run() {
-				long sleep = updateCycle;
-				while (true) {
-					long testTime = System.currentTimeMillis();
-
-					// Kill off old ones
-					MaximaProcess mp = null;
-					try {
-						mp = pool.take();
-					} catch (InterruptedException e1) {
-						mp = null;
-					}
-					while (mp != null && mp.liveTill < testTime) {
-						mp.kill();
-						try {
-							mp = pool.take();
-						} catch (InterruptedException e) {
-							mp = null;
-						}
-					}
-					if (mp != null)
-						pool.addFirst(mp);
-
-					while (usedPool.size() > 0
-							&& usedPool.get(0).liveTill < testTime) {
-						mp = usedPool.remove(0);
-						try {
-							mp.process.exitValue();
-						} catch (Exception e) {
-							mp.kill();
-						}
-					}
-
-					// Prune datasets
-					while (startupTimeHistory.size() > averageCount)
-						startupTimeHistory.remove(0);
-					while (requestTimeHistory.size() > averageCount)
-						requestTimeHistory.remove(0);
-
-					// Do estimates
-					startupTimeEstimate = 0;
-					for (long t : startupTimeHistory)
-						startupTimeEstimate += t;
-					startupTimeEstimate /= startupTimeHistory.size();
-
-					// +1 just to make sure that a startup moment exception can
-					// be skipped
-					demandEstimate = requestTimeHistory.size()
-							/ ((System.currentTimeMillis() - requestTimeHistory
-									.get(0)) + 1.0);
-
-					// Guestimate demand for N
-					double N = demandEstimate * safetyMultiplier * sleep;
-
-					if (N < poolMin)
-						N = poolMin;
-					if (N > poolMax)
-						N = poolMax;
-
-					// Startup new ones if need be
-					double currentN = pool.size() + startupLimit
-							- startupThrotle.availablePermits();
-					while (currentN < N
-							&& startupThrotle.availablePermits() > 0) {
-						N -= 1.0;
-						Starter starter = new Starter();
-						starter.start();
-					}
-
-					try {
-						Thread.sleep(sleep);
-					} catch (InterruptedException e) {
-						e.printStackTrace();
-					}
-				}
-			}
-		};
-		upKeep.setDaemon(true);
-		upKeep.setName("MaximaPool-upkeep");
+		// Start the upkeep thread.
+		upKeep = new UpkeepThread(updateCycle);
 		upKeep.start();
+	}
+
+	@Override
+	public void destroy() {
+		// Kill the upkeep thread.
+		try {
+			upKeep.stopRunning();
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+		// Kill all running processes.
+		for (MaximaProcess mp : pool)
+			mp.kill();
+		pool.clear();
+
+		super.destroy();
 	}
 
 	private static long startCount = 0;
@@ -267,6 +199,106 @@ public class MaximaPool extends HttpServlet {
 		}
 	}
 
+	class UpkeepThread extends Thread {
+		private long sleep;
+		private volatile boolean stopNow = false;
+
+		UpkeepThread(long sleepTime) {
+			sleep = sleepTime;
+			setDaemon(true);
+			setName("MaximaPool-upkeep");
+		}
+
+		void stopRunning() throws InterruptedException {
+			stopNow = true;
+			join();
+		}
+
+		public void run() {
+			while (!stopNow) {
+				long testTime = System.currentTimeMillis();
+
+				// Kill off old ones
+				MaximaProcess mp = null;
+				try {
+					mp = pool.take();
+				} catch (InterruptedException e1) {
+					mp = null;
+				}
+				while (mp != null && mp.liveTill < testTime) {
+					mp.kill();
+					try {
+						mp = pool.take();
+					} catch (InterruptedException e) {
+						mp = null;
+					}
+				}
+				if (mp != null)
+					pool.addFirst(mp);
+
+				while (usedPool.size() > 0
+						&& usedPool.get(0).liveTill < testTime) {
+					mp = usedPool.remove(0);
+					try {
+						mp.process.exitValue();
+					} catch (Exception e) {
+						mp.kill();
+					}
+				}
+
+				// Prune datasets
+				while (startupTimeHistory.size() > averageCount)
+					startupTimeHistory.remove(0);
+				while (requestTimeHistory.size() > averageCount)
+					requestTimeHistory.remove(0);
+
+				// Do estimates
+				startupTimeEstimate = 0;
+				for (long t : startupTimeHistory)
+					startupTimeEstimate += t;
+				startupTimeEstimate /= startupTimeHistory.size();
+
+				// +1 just to make sure that a startup moment exception can
+				// be skipped
+				demandEstimate = requestTimeHistory.size()
+						/ ((System.currentTimeMillis() - requestTimeHistory
+								.get(0)) + 1.0);
+
+				// Guestimate demand for N
+				double N = demandEstimate * safetyMultiplier * sleep;
+
+				if (N < poolMin)
+					N = poolMin;
+				if (N > poolMax)
+					N = poolMax;
+
+				// Startup new ones if need be
+				double currentN = pool.size() + startupLimit
+						- startupThrotle.availablePermits();
+				while (currentN < N
+						&& startupThrotle.availablePermits() > 0) {
+					N -= 1.0;
+					Starter starter = new Starter();
+					starter.start();
+				}
+
+				try {
+					Thread.sleep(sleep);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+	}
+
+	/**
+	 * Do a low-level healthcheck. This uses the very low-level commants to try
+	 * to get Maxima to do something, and outputs lots of details along the way.
+	 * @param request
+	 * @param response
+	 * @throws ServletException
+	 * @throws IOException
+	 */
 	public void doHealthcheckLowLevel(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
 
@@ -325,6 +357,11 @@ public class MaximaPool extends HttpServlet {
 		out.write("</body></html>");
 	}
 
+	/**
+	 * Helper method used by the healthcheck.
+	 * @param response
+	 * @throws IOException
+	 */
 	protected void healthcheckSendCommand(String command, OutputStreamWriter input, Writer out)
 			throws IOException {
 		out.write("<p>Sending command:</p><pre class=\"command\">" + command + "</pre>");
@@ -336,6 +373,11 @@ public class MaximaPool extends HttpServlet {
 		}
 	}
 
+	/**
+	 * Helper method used by the healthcheck.
+	 * @param response
+	 * @throws IOException
+	 */
 	private String healthcheckWaitForOutput(String test,
 			InputStreamReaderSucker output, String previousOutput, Writer out, long startupTime)
 			throws IOException {
@@ -372,6 +414,15 @@ public class MaximaPool extends HttpServlet {
 		return previousOutput;
 	}
 
+	/**
+	 * This is a high-level healthcheck script which gets Maxima to do something,
+	 * using the MaximaProcess class, but it run's synchonously, rather than using
+	 * the pool.
+	 * @param request
+	 * @param response
+	 * @throws ServletException
+	 * @throws IOException
+	 */
 	public void doHealthcheckHighLevel(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
 
@@ -393,8 +444,13 @@ public class MaximaPool extends HttpServlet {
 		out.write("</body></html>");
 	}
 
+	/**
+	 * Helper method used by the healthcheck.
+	 * @param response
+	 * @throws IOException
+	 */
 	protected Writer healthcheckStartOutput(HttpServletResponse response) throws IOException {
-		response.setStatus(200);
+		response.setStatus(HttpServletResponse.SC_OK);
 		response.setContentType("text/html");
 
 		Writer out = response.getWriter();
@@ -414,23 +470,16 @@ public class MaximaPool extends HttpServlet {
 	}
 
 	/**
-	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse
-	 *      response)
+	 * Display the current status of the servlet, with a form that can be used
+	 * for testing.
+	 * @param request
+	 * @param response
+	 * @throws ServletException
+	 * @throws IOException
 	 */
-	protected void doGet(HttpServletRequest request,
+	protected void doStatus(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
-
-		if ("healthcheck=1".equals(request.getQueryString())) {
-			doHealthcheckLowLevel(request, response);
-			return;
-		}
-
-		if ("healthcheck=2".equals(request.getQueryString())) {
-			doHealthcheckHighLevel(request, response);
-			return;
-		}
-
-		response.setStatus(200);
+		response.setStatus(HttpServletResponse.SC_OK);
 		response.setContentType("text/html");
 
 		Writer out = response.getWriter();
@@ -514,9 +563,39 @@ public class MaximaPool extends HttpServlet {
 	}
 
 	/**
+	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse
+	 *      response)
+	 */
+	@Override
+	protected void doGet(HttpServletRequest request,
+			HttpServletResponse response) throws ServletException, IOException {
+
+		try {
+			// Dispatch the request.
+			if ("healthcheck=1".equals(request.getQueryString())) {
+				doHealthcheckLowLevel(request, response);
+
+			} else if ("healthcheck=2".equals(request.getQueryString())) {
+				doHealthcheckHighLevel(request, response);
+
+			} else {
+				doStatus(request, response);
+			}
+
+		} catch (Exception e) {
+			// Display any exceptions.
+			StringWriter sw = new StringWriter();
+			e.printStackTrace(new PrintWriter(sw));
+			response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+					"<p>" + e.getMessage() + "</p><pre>" + sw.toString() + "</pre>");
+		}
+	}
+
+	/**
 	 * @see HttpServlet#doPost(HttpServletRequest request, HttpServletResponse
 	 *      response)
 	 */
+	@Override
 	protected void doPost(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
 		String theInput = request.getParameter("input");
@@ -534,10 +613,11 @@ public class MaximaPool extends HttpServlet {
 				e.printStackTrace();
 			}
 
-		if (mp.doAndDie(theInput, limit))
-			response.setStatus(200);
-		else
-			response.setStatus(416);
+		if (mp.doAndDie(theInput, limit)) {
+			response.setStatus(HttpServletResponse.SC_OK);
+		} else {
+			response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR );
+		}
 
 		String out = mp.output.currentValue();
 		if (out.indexOf("\"" + killString) > 0)
@@ -579,6 +659,9 @@ public class MaximaPool extends HttpServlet {
 		}
 	}
 
+	/**
+	 * Get a MaximaProcess from the pool.
+	 */
 	private MaximaProcess getProcess() {
 		// Start a new one as we are going to take one...
 		if (startupThrotle.availablePermits() > 0) {
