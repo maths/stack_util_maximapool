@@ -583,19 +583,11 @@ public class MaximaPool extends HttpServlet {
 
 			String test = loadReady;
 
-			if (load == null)
+			if (load == null) {
 				test = useReady;
-
-			while (output.currentValue().indexOf(test) < 0) {
-				try {
-					Thread.sleep(0, 200);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-				if (System.currentTimeMillis() > startupTime + STARTUP_TIMEOUT) {
-					throw new RuntimeException("Process start timeout");
-				}
 			}
+
+			waitForOutput(test);
 			if (load == null) {
 				ready = true;
 				if (fileHandling)
@@ -615,8 +607,15 @@ public class MaximaPool extends HttpServlet {
 				e.printStackTrace();
 			}
 
-			test = useReady;
+			waitForOutput(useReady);
 
+			ready = true;
+			if (fileHandling)
+				setupFiles();
+			startupTime = System.currentTimeMillis() - startupTime;
+		}
+
+		private void waitForOutput(String test) {
 			while (output.currentValue().indexOf(test) < 0) {
 				try {
 					Thread.sleep(0, 200);
@@ -627,12 +626,6 @@ public class MaximaPool extends HttpServlet {
 					throw new RuntimeException("Process start timeout");
 				}
 			}
-
-			ready = true;
-			if (fileHandling)
-				setupFiles();
-			startupTime = System.currentTimeMillis() - startupTime;
-
 		}
 
 		private void setupFiles() {
