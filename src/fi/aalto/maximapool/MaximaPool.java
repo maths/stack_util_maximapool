@@ -10,6 +10,8 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.Writer;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
@@ -34,8 +36,12 @@ import javax.servlet.http.HttpServletResponse;
  * @author Matti Harjula
  */
 public class MaximaPool extends HttpServlet {
-
+	
 	private static final long serialVersionUID = -8604075780786871066L;
+
+	private static final long MINUTE = 60*1000;
+	private static final long HOUR = 60*MINUTE;
+	private static final long DAY = 24*HOUR;
 
 	private ProcessBuilder processBuilder = new ProcessBuilder();
 
@@ -81,11 +87,15 @@ public class MaximaPool extends HttpServlet {
 
 	private volatile Semaphore startupThrotle;
 
+	private long servletStartTime;
+
 	/**
 	 * @see HttpServlet#HttpServlet()
 	 */
 	public MaximaPool() {
 		super();
+
+		servletStartTime = System.currentTimeMillis();
 
 		try {
 			// load properties
@@ -293,8 +303,8 @@ public class MaximaPool extends HttpServlet {
 
 		currentOutput = healthcheckWaitForOutput(test, output, currentOutput, out, startupTime);
 
-		String command = "load(\"" + load.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\") + "\");\n";
 		if (load != null) {
+			String command = "load(\"" + load.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\") + "\");\n";
 			healthcheckSendCommand(command, input, out);
 			currentOutput = healthcheckWaitForOutput(useReady, output, currentOutput, out, startupTime);
 		}
@@ -427,13 +437,24 @@ public class MaximaPool extends HttpServlet {
 
 		out.write("<html><head><title>MaximaPool - status display</title></head><body>");
 
-		out.write("<h3>Health-check</h3>");
-		out.write("<p><A href=\"?healthcheck=1\">Run the low-level health-check</a></p>");
-		out.write("<p><A href=\"?healthcheck=2\">Run the high-level health-check</a></p>");
-
-		out.write("<h3>Numbers</h3>");
+		out.write("<h3>Current performance</h3>");
 		out.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
 
+		Calendar c = Calendar.getInstance();
+		c.setTimeInMillis(servletStartTime);
+		long uptime = System.currentTimeMillis() - servletStartTime;
+		String upSinceTime = (new SimpleDateFormat("HH:mm")).format(c.getTime());
+		String upSinceDate = (new SimpleDateFormat("yyyy-MM-dd")).format(c.getTime());
+
+		long uptimeDays = uptime / DAY;
+		long uptimeHours = (uptime - uptimeDays * DAY) / HOUR;
+		c.set(Calendar.HOUR_OF_DAY, (int)uptimeHours);
+		long uptimeMinutes = (uptime - uptimeDays * DAY - uptimeHours * HOUR) / MINUTE;
+		c.set(Calendar.MINUTE, (int)uptimeMinutes);
+
+		out.write("<tr><td>Servlet started:</td><td>" + upSinceTime + " " + upSinceDate
+				+ " (" + uptimeDays + " days, " + uptimeHours + " hours, " + uptimeMinutes
+				+ " minutes ago)</td></tr>");
 		out.write("<tr><td>Ready processes in the pool:</td><td>" + pool.size()
 				+ "</td></tr>");
 		out.write("<tr><td>Processes in use:</td><td>" + usedPool.size()
@@ -445,9 +466,49 @@ public class MaximaPool extends HttpServlet {
 
 		out.write("</tbody></table>");
 
+		out.write("<h3>Health-check</h3>");
+		out.write("<p><A href=\"?healthcheck=1\">Run the low-level health-check</a></p>");
+		out.write("<p><A href=\"?healthcheck=2\">Run the high-level health-check</a></p>");
+
 		out.write("<h3>Test form</h3>");
 		out.write("<p>Input something for evaluation</p>");
 		out.write("<form method='POST'><textarea name='input'></textarea><br/>Timeout (ms): <select name='timeout'><option value='1000'>1000</option><option value='2000'>2000</option><option value='3000' selected='selected'>3000</option><option value='4000'>4000</option><option value='5000'>5000</option></select><br/><input type='submit' value='Eval'/></form>");
+
+		out.write("<h3>Configuration</h3>");
+		out.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
+
+		out.write("<tr><td>Maxima command-line:</td><td>" + cmdLine
+				+ "</td></tr>");
+		if (load != null) {
+			out.write("<tr><td>File to load:</td><td>" + load.getCanonicalPath()
+					+ "</td></tr>");
+		}
+		out.write("<tr><td>Started test string:</td><td>" + loadReady
+				+ "</td></tr>");
+		out.write("<tr><td>Loaded test string:</td><td>" + useReady
+				+ "</td></tr>");
+
+		out.write("<tr><td>File handling:</td><td>" + (fileHandling ? "On" : "Off")
+				+ "</td></tr>");
+		out.write("<tr><td>File paths template:</td><td>" + pathCommandTemplate
+				+ "</td></tr>");
+
+		out.write("<tr><td>Min pool size:</td><td>" + poolMin
+				+ "</td></tr>");
+		out.write("<tr><td>Max pool size:</td><td>" + poolMax
+				+ "</td></tr>");
+		out.write("<tr><td>Pool update cycle time:</td><td>" + updateCycle
+				+ " ms</td></tr>");
+		out.write("<tr><td>Number of data points for averages:</td><td>" + averageCount
+				+ "</td></tr>");
+		out.write("<tr><td>Pool size safety multiplier:</td><td>" + safetyMultiplier
+				+ "</td></tr>");
+		out.write("<tr><td>Execution extra time limit:</td><td>" + executionTime
+				+ " ms</td></tr>");
+		out.write("<tr><td>Process life time limit:</td><td>" + lifeTime
+				+ " ms</td></tr>");
+
+		out.write("</tbody></table>");
 
 		out.write("</body></html>");
 	}
