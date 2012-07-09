@@ -257,23 +257,10 @@ public class MaximaPool extends HttpServlet {
 		}
 	}
 
-	public void doHealthcheck(HttpServletRequest request,
+	public void doHealthcheckLowLevel(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
-		response.setStatus(200);
-		response.setContentType("text/html");
 
-		Writer out = response.getWriter();
-
-		out.write("<html><head>" +
-				"<title>MaximaPool - health-check</title>" +
-				"<style type=\"text/css\">" +
-					"pre { padding: 0.5em; background: #eee; }" +
-					"pre.command { background: #dfd; }" +
-				"</style>" +
-				"</head><body>");
-
-		out.write("<p>Trying to start a Maxima process.</p>");
-		out.flush();
+		Writer out = healthcheckStartOutput(response);
 
 		out.write("<p>Executing command-line: " + cmdLine + "</p>");
 		out.flush();
@@ -375,6 +362,47 @@ public class MaximaPool extends HttpServlet {
 		return previousOutput;
 	}
 
+	public void doHealthcheckHighLevel(HttpServletRequest request,
+			HttpServletResponse response) throws ServletException, IOException {
+
+		Writer out = healthcheckStartOutput(response);
+
+		MaximaProcess mp = new MaximaProcess();
+		String firstOutput = mp.output.currentValue();
+		out.write("<pre>" + firstOutput + "</pre>");
+		out.flush();
+
+		out.write("<p>Sending command: <b>1+1;</b>.</p>");
+		out.flush();
+
+		mp.doAndDie("1+1;\n", 10000);
+		String secondOutput = mp.output.currentValue();
+		out.write("<pre>" + secondOutput.substring(firstOutput.length()) + "</pre>");
+		out.flush();
+
+		out.write("</body></html>");
+	}
+
+	protected Writer healthcheckStartOutput(HttpServletResponse response) throws IOException {
+		response.setStatus(200);
+		response.setContentType("text/html");
+
+		Writer out = response.getWriter();
+
+		out.write("<html><head>" +
+				"<title>MaximaPool - health-check</title>" +
+				"<style type=\"text/css\">" +
+					"pre { padding: 0.5em; background: #eee; }" +
+					"pre.command { background: #dfd; }" +
+				"</style>" +
+				"</head><body>");
+
+		out.write("<p>Trying to start a Maxima process.</p>");
+		out.flush();
+
+		return out;
+	}
+
 	/**
 	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse
 	 *      response)
@@ -383,7 +411,12 @@ public class MaximaPool extends HttpServlet {
 			HttpServletResponse response) throws ServletException, IOException {
 
 		if ("healthcheck=1".equals(request.getQueryString())) {
-			doHealthcheck(request, response);
+			doHealthcheckLowLevel(request, response);
+			return;
+		}
+
+		if ("healthcheck=2".equals(request.getQueryString())) {
+			doHealthcheckHighLevel(request, response);
 			return;
 		}
 
@@ -395,7 +428,8 @@ public class MaximaPool extends HttpServlet {
 		out.write("<html><head><title>MaximaPool - status display</title></head><body>");
 
 		out.write("<h3>Health-check</h3>");
-		out.write("<p><A href=\"?healthcheck=1\">Run the health-check</a></p>");
+		out.write("<p><A href=\"?healthcheck=1\">Run the low-level health-check</a></p>");
+		out.write("<p><A href=\"?healthcheck=2\">Run the high-level health-check</a></p>");
 
 		out.write("<h3>Numbers</h3>");
 		out.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
