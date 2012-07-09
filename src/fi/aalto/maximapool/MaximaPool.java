@@ -489,6 +489,8 @@ public class MaximaPool extends HttpServlet {
 		out.write("<h3>Current performance</h3>");
 		out.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
 
+		Runtime rt = Runtime.getRuntime();
+
 		Calendar c = Calendar.getInstance();
 		c.setTimeInMillis(servletStartTime);
 		long uptime = System.currentTimeMillis() - servletStartTime;
@@ -501,9 +503,6 @@ public class MaximaPool extends HttpServlet {
 		long uptimeMinutes = (uptime - uptimeDays * DAY - uptimeHours * HOUR) / MINUTE;
 		c.set(Calendar.MINUTE, (int)uptimeMinutes);
 
-		out.write("<tr><td>Servlet started:</td><td>" + upSinceTime + " " + upSinceDate
-				+ " (" + uptimeDays + " days, " + uptimeHours + " hours, " + uptimeMinutes
-				+ " minutes ago)</td></tr>");
 		out.write("<tr><td>Ready processes in the pool:</td><td>" + pool.size()
 				+ "</td></tr>");
 		out.write("<tr><td>Processes in use:</td><td>" + usedPool.size()
@@ -512,6 +511,14 @@ public class MaximaPool extends HttpServlet {
 				* 1000.0 + " Hz</td></tr>");
 		out.write("<tr><td>Current startuptime:</td><td>" + startupTimeEstimate
 				+ " ms</td></tr>");
+		out.write("<tr><td>Servlet started:</td><td>" + upSinceTime + " " + upSinceDate
+				+ " (" + uptimeDays + " days, " + uptimeHours + " hours, " + uptimeMinutes
+				+ " minutes ago)</td></tr>");
+		out.write("<tr><td>Free memory:</td><td>" + rt.freeMemory() + " out of "
+				+ rt.totalMemory() + " total memory (" + rt.maxMemory() + " max limit)."
+				+ "</td></tr>");
+		out.write("<tr><td>Active threads:</td><td>" + Thread.activeCount()
+				+ "</td></tr>");
 
 		out.write("</tbody></table>");
 
