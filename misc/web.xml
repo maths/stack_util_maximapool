@@ -6,7 +6,7 @@
 		</description>
 		<display-name>MaximaPool</display-name>
 		<servlet-name>MaximaPool</servlet-name>
-		<servlet-class>fi.aalto.maximapool.MaximaPool</servlet-class>
+		<servlet-class>fi.aalto.maximapool.MaximaServlet</servlet-class>
 	</servlet>
 	<servlet-mapping>
 		<servlet-name>MaximaPool</servlet-name>

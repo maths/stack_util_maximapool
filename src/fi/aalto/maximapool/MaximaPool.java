@@ -4,29 +4,18 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.io.Writer;
-import java.text.SimpleDateFormat;
-import java.util.Calendar;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.Semaphore;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
-
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 
 /**
  * <p>
@@ -36,15 +25,9 @@ import javax.servlet.http.HttpServletResponse;
  * 
  * @author Matti Harjula
  */
-public class MaximaPool extends HttpServlet {
-	
-	private static final long serialVersionUID = -8604075780786871066L;
+public class MaximaPool {
 
-	private static final long MINUTE = 60*1000;
-	private static final long HOUR = 60*MINUTE;
-	private static final long DAY = 24*HOUR;
-
-	private ProcessBuilder processBuilder = new ProcessBuilder();
+	ProcessBuilder processBuilder = new ProcessBuilder();
 
 	private long updateCycle = 500;
 	private long startupTimeEstimate = 2000;
@@ -69,12 +52,12 @@ public class MaximaPool extends HttpServlet {
 	private boolean fileHandling = false;
 	private String pathCommandTemplate = "TMP_IMG_DIR: \"%WORK-DIR%\"; IMG_DIR: \"%OUTPUT-DIR%\";";
 
-	private String killString = "--COMPLETED--kill--PROCESS--";
-	private String cmdLine = "maxima";
+	String killString = "--COMPLETED--kill--PROCESS--";
+	String cmdLine = "maxima";
 	private File cwd = new File(".");
-	private File load = null;
-	private String loadReady = "(%i1)";
-	private String useReady = "(%i1)";
+	File load = null;
+	String loadReady = "(%i1)";
+	String useReady = "(%i1)";
 
 	private long executionTime = 30000;
 	private long lifeTime = 60000000;
@@ -86,70 +69,53 @@ public class MaximaPool extends HttpServlet {
 
 	volatile Semaphore startupThrotle;
 
-	private long servletStartTime;
-
 	private UpkeepThread upKeep;
 
-	@Override
-	public void init() throws ServletException {
-		super.init();
+	MaximaPool(Properties properties) {
+		updateCycle = Long.parseLong(properties.getProperty(
+				"pool.update.cycle", "500"));
+		startupTimeEstimate = Long.parseLong(properties.getProperty(
+				"pool.adaptation.startuptime.initial.estimate", "2000"));
+		demandEstimate = Double.parseDouble(properties.getProperty(
+				"pool.adaptation.demand.initial.estimate", "0.001"));
+		averageCount = Integer.parseInt(properties.getProperty(
+				"pool.adaptation.averages.length", "5"));
+		safetyMultiplier = Double.parseDouble(properties.getProperty(
+				"pool.adaptation.safety.multiplier", "3.0"));
+		poolMin = Integer.parseInt(properties.getProperty("pool.size.min",
+				"5"));
+		poolMax = Integer.parseInt(properties.getProperty("pool.size.max",
+				"100"));
+		startupLimit = Integer.parseInt(properties.getProperty(
+				"pool.start.limit", "20"));
 
-		servletStartTime = System.currentTimeMillis();
+		cmdLine = properties.getProperty("maxima.commandline", "maxima");
+		loadReady = properties
+				.getProperty("maxima.ready.for.load", "(%i1)");
+		useReady = properties.getProperty("maxima.ready.for.use", "(%i1)");
+		cwd = new File(properties.getProperty("maxima.cwd", "."));
+		load = new File(properties.getProperty("maxima.load", "false"));
+		if (load.getName().equals("false"))
+			load = null;
 
-		try {
-			// Load properties.
-			Properties properties = new Properties();
-			properties.load(Thread.currentThread().getContextClassLoader()
-					.getResourceAsStream("maximapool.conf"));
+		fileHandling = properties.getProperty("file.handling", "false")
+				.equalsIgnoreCase("true");
+		pathCommandTemplate = properties.getProperty("maxima.path.command",
+				"TMP_IMG_DIR: \"%WORK-DIR%\"; IMG_DIR: \"%OUTPUT-DIR%\";");
 
-			updateCycle = Long.parseLong(properties.getProperty(
-					"pool.update.cycle", "500"));
-			startupTimeEstimate = Long.parseLong(properties.getProperty(
-					"pool.adaptation.startuptime.initial.estimate", "2000"));
-			demandEstimate = Double.parseDouble(properties.getProperty(
-					"pool.adaptation.demand.initial.estimate", "0.001"));
-			averageCount = Integer.parseInt(properties.getProperty(
-					"pool.adaptation.averages.length", "5"));
-			safetyMultiplier = Double.parseDouble(properties.getProperty(
-					"pool.adaptation.safety.multiplier", "3.0"));
-			poolMin = Integer.parseInt(properties.getProperty("pool.size.min",
-					"5"));
-			poolMax = Integer.parseInt(properties.getProperty("pool.size.max",
-					"100"));
-			startupLimit = Integer.parseInt(properties.getProperty(
-					"pool.start.limit", "20"));
+		executionTime = Long.parseLong(properties.getProperty(
+				"pool.execution.time.limit", "30000"));
+		lifeTime = Long.parseLong(properties.getProperty(
+				"pool.process.lifetime", "60000000"));
 
-			cmdLine = properties.getProperty("maxima.commandline", "maxima");
-			loadReady = properties
-					.getProperty("maxima.ready.for.load", "(%i1)");
-			useReady = properties.getProperty("maxima.ready.for.use", "(%i1)");
-			cwd = new File(properties.getProperty("maxima.cwd", "."));
-			load = new File(properties.getProperty("maxima.load", "false"));
-			if (load.getName().equals("false"))
-				load = null;
+		// Initialise the datasets.
+		startupTimeHistory.add(startupTimeEstimate);
+		requestTimeHistory.add(System.currentTimeMillis());
 
-			fileHandling = properties.getProperty("file.handling", "false")
-					.equalsIgnoreCase("true");
-			pathCommandTemplate = properties.getProperty("maxima.path.command",
-					"TMP_IMG_DIR: \"%WORK-DIR%\"; IMG_DIR: \"%OUTPUT-DIR%\";");
-
-			executionTime = Long.parseLong(properties.getProperty(
-					"pool.execution.time.limit", "30000"));
-			lifeTime = Long.parseLong(properties.getProperty(
-					"pool.process.lifetime", "60000000"));
-
-			// Initialise the datasets.
-			startupTimeHistory.add(startupTimeEstimate);
-			requestTimeHistory.add(System.currentTimeMillis());
-
-			// Set up the processBuilder
-			processBuilder.command(cmdLine.split(" "));
-			processBuilder.directory(cwd);
-			processBuilder.redirectErrorStream(true);
-		} catch (IOException e) {
-			System.out.println("Load error: did you lose maximapool.conf?");
-			e.printStackTrace();
-		}
+		// Set up the processBuilder
+		processBuilder.command(cmdLine.split(" "));
+		processBuilder.directory(cwd);
+		processBuilder.redirectErrorStream(true);
 
 		// Create the startup throttle.
 		this.startupThrotle = new Semaphore(startupLimit);
@@ -157,24 +123,6 @@ public class MaximaPool extends HttpServlet {
 		// Start the upkeep thread.
 		upKeep = new UpkeepThread(this, updateCycle);
 		upKeep.start();
-	}
-
-	@Override
-	public void destroy() {
-		// Kill the upkeep thread.
-		try {
-			upKeep.stopRunning();
-		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-
-		// Kill all running processes.
-		for (MaximaProcess mp : pool)
-			mp.kill();
-		pool.clear();
-
-		super.destroy();
 	}
 
 	/**
@@ -197,385 +145,46 @@ public class MaximaPool extends HttpServlet {
 	}
 
 	/**
-	 * Do a low-level healthcheck. This uses the very low-level commants to try
-	 * to get Maxima to do something, and outputs lots of details along the way.
-	 * @param request
-	 * @param response
-	 * @throws ServletException
-	 * @throws IOException
+	 * @return Map<String, String> a hash map containing lots of data about
+	 * the current state of the pool.
 	 */
-	public void doHealthcheckLowLevel(HttpServletRequest request,
-			HttpServletResponse response) throws ServletException, IOException {
+	protected Map<String, String> getStatus() {
 
-		Writer out = healthcheckStartOutput(response);
+		Map<String, String> status = new LinkedHashMap<String, String>();
 
-		out.write("<p>Executing command-line: " + cmdLine + "</p>");
-		out.flush();
-
-		String currentOutput = "";
-
-		Process process = null;
-		long startupTime = System.currentTimeMillis();
-		try {
-			process = processBuilder.start();
-		} catch (IOException e) {
-			System.out.println("Process startup failure...");
-			e.printStackTrace();
-			return;
-		}
-
-		Semaphore runSwitch = new Semaphore(1);
-
-		InputStreamReaderSucker output = new InputStreamReaderSucker(new BufferedReader(
-				new InputStreamReader(new BufferedInputStream(
-						process.getInputStream()))), runSwitch);
-		OutputStreamWriter input = new OutputStreamWriter(new BufferedOutputStream(
-				process.getOutputStream()));
-
-		String test = loadReady;
-
-		if (load == null) {
-			test = useReady;
-		}
-
-		currentOutput = healthcheckWaitForOutput(test, output, currentOutput, out, startupTime);
-
+		status.put("Ready processes in the pool", "" + pool.size());
+		status.put("Processes in use", "" + usedPool.size());
+		status.put("Current demand estimate", demandEstimate * 1000.0 + " Hz");
+		status.put("Current startuptime", startupTimeEstimate + " ms");
+		status.put("Active threads", "" + Thread.activeCount());
+		status.put("Maxima command-line", cmdLine);
 		if (load != null) {
-			String command = "load(\"" + load.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\") + "\");\n";
-			healthcheckSendCommand(command, input, out);
-			currentOutput = healthcheckWaitForOutput(useReady, output, currentOutput, out, startupTime);
-		}
-
-		out.write("<p>startupTime = " + (System.currentTimeMillis() - startupTime) + "</p>");
-
-		String killStringGen = "concat(\""
-				+ killString.substring(0, killString.length() / 2)
-				+ "\",\"" + killString.substring(killString.length() / 2)
-				+ "\");\n";
-
-		healthcheckSendCommand("1+1;\n" + killStringGen, input, out);
-		currentOutput = healthcheckWaitForOutput(killString, output, currentOutput, out, startupTime);
-
-		healthcheckSendCommand("quit();\n", input, out);
-		input.close();
-
-		out.write("</body></html>");
-	}
-
-	/**
-	 * Helper method used by the healthcheck.
-	 * @param response
-	 * @throws IOException
-	 */
-	protected void healthcheckSendCommand(String command, OutputStreamWriter input, Writer out)
-			throws IOException {
-		out.write("<p>Sending command:</p><pre class=\"command\">" + command + "</pre>");
-		try {
-			input.write(command);
-			input.flush();
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-	}
-
-	/**
-	 * Helper method used by the healthcheck.
-	 * @param response
-	 * @throws IOException
-	 */
-	private String healthcheckWaitForOutput(String test,
-			InputStreamReaderSucker output, String previousOutput, Writer out, long startupTime)
-			throws IOException {
-
-		out.write("<p>Waiting for target text: <b>" + test + "</b></p>");
-		out.flush();
-
-		while (true) {
 			try {
-				Thread.sleep(0, 200);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
-
-			if (System.currentTimeMillis() > startupTime + 10000) {
-				out.write("<p>Timeout!</p>");
-				out.flush();
-				throw new RuntimeException("Timeout");
-			}
-
-			String currentOutput = output.currentValue();
-
-			if (!currentOutput.equals(previousOutput)) {
-				out.write("<pre>" + currentOutput.substring(previousOutput.length()) + "</pre>");
-				previousOutput = currentOutput;
-				out.flush();
-			}
-
-			if (previousOutput.indexOf(test) >= 0) {
-				break;
+				status.put("File to load", load.getCanonicalPath());
+			} catch (IOException e) {
 			}
 		}
+		status.put("Started test string", loadReady);
+		status.put("Loaded test string", useReady);
+		status.put("File handling", fileHandling ? "On" : "Off");
+		status.put("File paths template", pathCommandTemplate);
+		status.put("Min pool size", "" + poolMin);
+		status.put("Max pool size", "" + poolMax);
+		status.put("Pool update cycle time", updateCycle + " ms");
+		status.put("Number of data points for averages", "" + averageCount);
+		status.put("Pool size safety multiplier", "" + safetyMultiplier);
+		status.put("Execution extra time limit", executionTime + " ms");
+		status.put("Process life time limit", lifeTime + " ms");
 
-		return previousOutput;
-	}
-
-	/**
-	 * This is a high-level healthcheck script which gets Maxima to do something,
-	 * using the MaximaProcess class, but it run's synchonously, rather than using
-	 * the pool.
-	 * @param request
-	 * @param response
-	 * @throws ServletException
-	 * @throws IOException
-	 */
-	public void doHealthcheckHighLevel(HttpServletRequest request,
-			HttpServletResponse response) throws ServletException, IOException {
-
-		Writer out = healthcheckStartOutput(response);
-
-		MaximaProcess mp = new MaximaProcess();
-		String firstOutput = mp.output.currentValue();
-		out.write("<pre>" + firstOutput + "</pre>");
-		out.flush();
-
-		out.write("<p>Sending command: <b>1+1;</b>.</p>");
-		out.flush();
-
-		mp.doAndDie("1+1;\n", 10000);
-		String secondOutput = mp.output.currentValue();
-		out.write("<pre>" + secondOutput.substring(firstOutput.length()) + "</pre>");
-		out.flush();
-
-		out.write("</body></html>");
-	}
-
-	/**
-	 * Helper method used by the healthcheck.
-	 * @param response
-	 * @throws IOException
-	 */
-	protected Writer healthcheckStartOutput(HttpServletResponse response) throws IOException {
-		response.setStatus(HttpServletResponse.SC_OK);
-		response.setContentType("text/html");
-
-		Writer out = response.getWriter();
-
-		out.write("<html><head>" +
-				"<title>MaximaPool - health-check</title>" +
-				"<style type=\"text/css\">" +
-					"pre { padding: 0.5em; background: #eee; }" +
-					"pre.command { background: #dfd; }" +
-				"</style>" +
-				"</head><body>");
-
-		out.write("<p>Trying to start a Maxima process.</p>");
-		out.flush();
-
-		return out;
-	}
-
-	/**
-	 * Display the current status of the servlet, with a form that can be used
-	 * for testing.
-	 * @param request
-	 * @param response
-	 * @throws ServletException
-	 * @throws IOException
-	 */
-	protected void doStatus(HttpServletRequest request,
-			HttpServletResponse response) throws ServletException, IOException {
-		response.setStatus(HttpServletResponse.SC_OK);
-		response.setContentType("text/html");
-
-		Writer out = response.getWriter();
-
-		out.write("<html><head><title>MaximaPool - status display</title></head><body>");
-
-		out.write("<h3>Current performance</h3>");
-		out.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
-
-		Runtime rt = Runtime.getRuntime();
-
-		Calendar c = Calendar.getInstance();
-		c.setTimeInMillis(servletStartTime);
-		long uptime = System.currentTimeMillis() - servletStartTime;
-		String upSinceTime = (new SimpleDateFormat("HH:mm")).format(c.getTime());
-		String upSinceDate = (new SimpleDateFormat("yyyy-MM-dd")).format(c.getTime());
-
-		long uptimeDays = uptime / DAY;
-		long uptimeHours = (uptime - uptimeDays * DAY) / HOUR;
-		c.set(Calendar.HOUR_OF_DAY, (int)uptimeHours);
-		long uptimeMinutes = (uptime - uptimeDays * DAY - uptimeHours * HOUR) / MINUTE;
-		c.set(Calendar.MINUTE, (int)uptimeMinutes);
-
-		out.write("<tr><td>Ready processes in the pool:</td><td>" + pool.size()
-				+ "</td></tr>");
-		out.write("<tr><td>Processes in use:</td><td>" + usedPool.size()
-				+ "</td></tr>");
-		out.write("<tr><td>Current demand estimate:</td><td>" + demandEstimate
-				* 1000.0 + " Hz</td></tr>");
-		out.write("<tr><td>Current startuptime:</td><td>" + startupTimeEstimate
-				+ " ms</td></tr>");
-		out.write("<tr><td>Servlet started:</td><td>" + upSinceTime + " " + upSinceDate
-				+ " (" + uptimeDays + " days, " + uptimeHours + " hours, " + uptimeMinutes
-				+ " minutes ago)</td></tr>");
-		out.write("<tr><td>Free memory:</td><td>" + StringUtils.formatBytes(rt.freeMemory())
-				+ " out of " + StringUtils.formatBytes(rt.totalMemory()) + " total memory (" +
-				StringUtils.formatBytes(rt.maxMemory()) + " max limit)."
-				+ "</td></tr>");
-		out.write("<tr><td>Active threads:</td><td>" + Thread.activeCount()
-				+ "</td></tr>");
-
-		out.write("</tbody></table>");
-
-		out.write("<h3>Health-check</h3>");
-		out.write("<p><A href=\"?healthcheck=1\">Run the low-level health-check</a></p>");
-		out.write("<p><A href=\"?healthcheck=2\">Run the high-level health-check</a></p>");
-
-		out.write("<h3>Test form</h3>");
-		out.write("<p>Input something for evaluation</p>");
-		out.write("<form method='POST'><textarea name='input'></textarea><br/>Timeout (ms): <select name='timeout'><option value='1000'>1000</option><option value='2000'>2000</option><option value='3000' selected='selected'>3000</option><option value='4000'>4000</option><option value='5000'>5000</option></select><br/><input type='submit' value='Eval'/></form>");
-
-		out.write("<h3>Configuration</h3>");
-		out.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
-
-		out.write("<tr><td>Maxima command-line:</td><td>" + cmdLine
-				+ "</td></tr>");
-		if (load != null) {
-			out.write("<tr><td>File to load:</td><td>" + load.getCanonicalPath()
-					+ "</td></tr>");
-		}
-		out.write("<tr><td>Started test string:</td><td>" + loadReady
-				+ "</td></tr>");
-		out.write("<tr><td>Loaded test string:</td><td>" + useReady
-				+ "</td></tr>");
-
-		out.write("<tr><td>File handling:</td><td>" + (fileHandling ? "On" : "Off")
-				+ "</td></tr>");
-		out.write("<tr><td>File paths template:</td><td>" + pathCommandTemplate
-				+ "</td></tr>");
-
-		out.write("<tr><td>Min pool size:</td><td>" + poolMin
-				+ "</td></tr>");
-		out.write("<tr><td>Max pool size:</td><td>" + poolMax
-				+ "</td></tr>");
-		out.write("<tr><td>Pool update cycle time:</td><td>" + updateCycle
-				+ " ms</td></tr>");
-		out.write("<tr><td>Number of data points for averages:</td><td>" + averageCount
-				+ "</td></tr>");
-		out.write("<tr><td>Pool size safety multiplier:</td><td>" + safetyMultiplier
-				+ "</td></tr>");
-		out.write("<tr><td>Execution extra time limit:</td><td>" + executionTime
-				+ " ms</td></tr>");
-		out.write("<tr><td>Process life time limit:</td><td>" + lifeTime
-				+ " ms</td></tr>");
-
-		out.write("</tbody></table>");
-
-		out.write("</body></html>");
-	}
-
-	/**
-	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse
-	 *      response)
-	 */
-	@Override
-	protected void doGet(HttpServletRequest request,
-			HttpServletResponse response) throws ServletException, IOException {
-
-		try {
-			// Dispatch the request.
-			if ("healthcheck=1".equals(request.getQueryString())) {
-				doHealthcheckLowLevel(request, response);
-
-			} else if ("healthcheck=2".equals(request.getQueryString())) {
-				doHealthcheckHighLevel(request, response);
-
-			} else {
-				doStatus(request, response);
-			}
-
-		} catch (Exception e) {
-			// Display any exceptions.
-			StringWriter sw = new StringWriter();
-			e.printStackTrace(new PrintWriter(sw));
-			response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
-					"<p>" + e.getMessage() + "</p><pre>" + sw.toString() + "</pre>");
-		}
-	}
-
-	/**
-	 * @see HttpServlet#doPost(HttpServletRequest request, HttpServletResponse
-	 *      response)
-	 */
-	@Override
-	protected void doPost(HttpServletRequest request,
-			HttpServletResponse response) throws ServletException, IOException {
-		String theInput = request.getParameter("input");
-		requestTimeHistory.add(System.currentTimeMillis());
-
-		// NOTE! the obvious lack of input sanity checks... so think where you
-		// use this.
-		MaximaProcess mp = getProcess();
-
-		long limit = 3000;
-		if (request.getParameter("timeout") != null)
-			try {
-				limit = Long.parseLong(request.getParameter("timeout"));
-			} catch (NumberFormatException e) {
-				e.printStackTrace();
-			}
-
-		if (mp.doAndDie(theInput, limit)) {
-			response.setStatus(HttpServletResponse.SC_OK);
-		} else {
-			response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR );
-		}
-
-		String out = mp.output.currentValue();
-		if (out.indexOf("\"" + killString) > 0)
-			out = out.substring(0, out.indexOf("\"" + killString));
-		else if (out.indexOf(killString) > 0)
-			out = out.substring(0, out.indexOf(killString));
-
-		usedPool.remove(mp);
-
-		if (fileHandling && mp.filesGenerated().size() > 0) {
-			response.setContentType("application/zip");
-			ZipOutputStream zos = new ZipOutputStream(response
-					.getOutputStream());
-
-			byte[] buffy = new byte[4096];
-			int c = -1;
-			ZipEntry z = new ZipEntry("OUTPUT");
-			zos.putNextEntry(z);
-			zos.write(out.getBytes());
-			zos.closeEntry();
-			for (File f : mp.filesGenerated()) {
-				String name = f.getCanonicalPath().replace(
-						new File(mp.baseDir, "output").getCanonicalPath(), "");
-				z = new ZipEntry(name);
-				zos.putNextEntry(z);
-				FileInputStream fis = new FileInputStream(f);
-				c = fis.read(buffy);
-				while (c > 0) {
-					zos.write(buffy, 0, c);
-					c = fis.read(buffy);
-				}
-				fis.close();
-				zos.closeEntry();
-			}
-			zos.finish();
-		} else {
-			response.setContentType("text/plain");
-			response.getWriter().write(out);
-		}
+		return status;
 	}
 
 	/**
 	 * Get a MaximaProcess from the pool.
 	 */
-	private MaximaProcess getProcess() {
+	MaximaProcess getProcess() {
+		requestTimeHistory.add(System.currentTimeMillis());
+
 		// Start a new one as we are going to take one...
 		if (startupThrotle.availablePermits() > 0) {
 			ProcessStarter starter = new ProcessStarter(this);
@@ -600,6 +209,10 @@ public class MaximaPool extends HttpServlet {
 		mp.activate();
 
 		return mp;
+	}
+
+	void notifyProcessFinishedWith(MaximaProcess mp) {
+		usedPool.remove(mp);
 	}
 
 	void killOverdueProcesses() {
@@ -897,6 +510,9 @@ public class MaximaPool extends HttpServlet {
 		}
 
 		List<File> filesGenerated() {
+			if (!fileHandling) {
+				return new LinkedList<File>();
+			}
 			return listFilesInOrder(new File(baseDir, "output"), false);
 		}
 
@@ -911,6 +527,21 @@ public class MaximaPool extends HttpServlet {
 			}
 
 			super.finalize();
+		}
+
+		/**
+		 * @return the output of executing the command, up to, but not including
+		 * killString.
+		 */
+		public String getOutput() {
+			String out = output.currentValue();
+			if (out.indexOf("\"" + killString) > 0) {
+				return out.substring(0, out.indexOf("\"" + killString));
+			} else if (out.indexOf(killString) > 0) {
+				return out.substring(0, out.indexOf(killString));
+			} else {
+				return out;
+			}
 		}
 	}
 
@@ -937,4 +568,18 @@ public class MaximaPool extends HttpServlet {
 		return R;
 	}
 
+	void destroy() {
+		// Kill the upkeep thread.
+		try {
+			upKeep.stopRunning();
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+		}
+
+		// Kill all running processes.
+		for (MaximaProcess mp : pool) {
+			mp.kill();
+		}
+		pool.clear();
+	}
 }
