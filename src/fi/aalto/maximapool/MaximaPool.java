@@ -145,7 +145,7 @@ public class MaximaPool extends HttpServlet {
 			requestTimeHistory.add(System.currentTimeMillis());
 
 			// Set up the processBuilder
-			processBuilder.command(cmdLine);
+			processBuilder.command(cmdLine.split(" "));
 			processBuilder.directory(cwd);
 			processBuilder.redirectErrorStream(true);
 		} catch (IOException e) {
