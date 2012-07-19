@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
-import java.io.Reader;
 import java.io.StringWriter;
 import java.io.Writer;
 import java.text.SimpleDateFormat;
@@ -57,13 +56,11 @@ public class MaximaPool extends HttpServlet {
 	// that the processes die though some other means.
 
 	// The pool for ready processes
-	private BlockingDeque<MaximaProcess> pool = new LinkedBlockingDeque<MaximaProcess>();
+	BlockingDeque<MaximaProcess> pool = new LinkedBlockingDeque<MaximaProcess>();
 
 	// The pool of processes in use
 	private List<MaximaProcess> usedPool = Collections
 			.synchronizedList(new LinkedList<MaximaProcess>());
-
-	private Properties properties = new Properties();
 
 	private int poolMin = 5;
 	private int poolMax = 100;
@@ -82,12 +79,12 @@ public class MaximaPool extends HttpServlet {
 	private long executionTime = 30000;
 	private long lifeTime = 60000000;
 
-	private List<Long> startupTimeHistory = Collections
+	List<Long> startupTimeHistory = Collections
 			.synchronizedList(new LinkedList<Long>());
 	private List<Long> requestTimeHistory = Collections
 			.synchronizedList(new LinkedList<Long>());
 
-	private volatile Semaphore startupThrotle;
+	volatile Semaphore startupThrotle;
 
 	private long servletStartTime;
 
@@ -101,6 +98,7 @@ public class MaximaPool extends HttpServlet {
 
 		try {
 			// Load properties.
+			Properties properties = new Properties();
 			properties.load(Thread.currentThread().getContextClassLoader()
 					.getResourceAsStream("maximapool.conf"));
 
@@ -157,7 +155,7 @@ public class MaximaPool extends HttpServlet {
 		this.startupThrotle = new Semaphore(startupLimit);
 
 		// Start the upkeep thread.
-		upKeep = new UpkeepThread(updateCycle);
+		upKeep = new UpkeepThread(this, updateCycle);
 		upKeep.start();
 	}
 
@@ -179,116 +177,23 @@ public class MaximaPool extends HttpServlet {
 		super.destroy();
 	}
 
-	private static long startCount = 0;
-
-	private class Starter extends Thread {
-
-		public Starter() {
-			super();
-			startCount++;
-			this.setName(Thread.currentThread().getName() + "-starter-"
-					+ startCount);
-		}
-
-		public void run() {
-			startupThrotle.acquireUninterruptibly();
-			MaximaProcess mp = new MaximaProcess();
-			startupTimeHistory.add(mp.startupTime);
-			pool.add(mp);
-			startupThrotle.release();
-		}
+	/**
+	 * Tells the pool that a process is being started.
+	 * This method will not return until a startupThrotle semaphore has been
+	 * acquired.
+	 */
+	void notifyStartingProcess() {
+		startupThrotle.acquireUninterruptibly();
 	}
 
-	class UpkeepThread extends Thread {
-		private long sleep;
-		private volatile boolean stopNow = false;
-
-		UpkeepThread(long sleepTime) {
-			sleep = sleepTime;
-			setDaemon(true);
-			setName("MaximaPool-upkeep");
-		}
-
-		void stopRunning() throws InterruptedException {
-			stopNow = true;
-			join();
-		}
-
-		public void run() {
-			while (!stopNow) {
-				long testTime = System.currentTimeMillis();
-
-				// Kill off old ones
-				MaximaProcess mp = null;
-				try {
-					mp = pool.take();
-				} catch (InterruptedException e1) {
-					mp = null;
-				}
-				while (mp != null && mp.liveTill < testTime) {
-					mp.kill();
-					try {
-						mp = pool.take();
-					} catch (InterruptedException e) {
-						mp = null;
-					}
-				}
-				if (mp != null)
-					pool.addFirst(mp);
-
-				while (usedPool.size() > 0
-						&& usedPool.get(0).liveTill < testTime) {
-					mp = usedPool.remove(0);
-					try {
-						mp.process.exitValue();
-					} catch (Exception e) {
-						mp.kill();
-					}
-				}
-
-				// Prune datasets
-				while (startupTimeHistory.size() > averageCount)
-					startupTimeHistory.remove(0);
-				while (requestTimeHistory.size() > averageCount)
-					requestTimeHistory.remove(0);
-
-				// Do estimates
-				startupTimeEstimate = 0;
-				for (long t : startupTimeHistory)
-					startupTimeEstimate += t;
-				startupTimeEstimate /= startupTimeHistory.size();
-
-				// +1 just to make sure that a startup moment exception can
-				// be skipped
-				demandEstimate = requestTimeHistory.size()
-						/ ((System.currentTimeMillis() - requestTimeHistory
-								.get(0)) + 1.0);
-
-				// Guestimate demand for N
-				double N = demandEstimate * safetyMultiplier * sleep;
-
-				if (N < poolMin)
-					N = poolMin;
-				if (N > poolMax)
-					N = poolMax;
-
-				// Startup new ones if need be
-				double currentN = pool.size() + startupLimit
-						- startupThrotle.availablePermits();
-				while (currentN < N
-						&& startupThrotle.availablePermits() > 0) {
-					N -= 1.0;
-					Starter starter = new Starter();
-					starter.start();
-				}
-
-				try {
-					Thread.sleep(sleep);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-			}
-		}
+	/**
+	 * Tells the pool that a process has started up, and is ready for use.
+	 * @param mp the newly started process.
+	 */
+	public void notifyProcessReady(MaximaProcess mp) {
+		startupTimeHistory.add(mp.startupTime);
+		pool.add(mp);
+		startupThrotle.release();
 	}
 
 	/**
@@ -673,7 +578,7 @@ public class MaximaPool extends HttpServlet {
 	private MaximaProcess getProcess() {
 		// Start a new one as we are going to take one...
 		if (startupThrotle.availablePermits() > 0) {
-			Starter starter = new Starter();
+			ProcessStarter starter = new ProcessStarter(this);
 			starter.start();
 		}
 
@@ -695,6 +600,79 @@ public class MaximaPool extends HttpServlet {
 		mp.activate();
 
 		return mp;
+	}
+
+	void killOverdueProcesses() {
+		long testTime = System.currentTimeMillis();
+
+		// Kill off old ones
+		MaximaProcess mp = null;
+		try {
+			mp = pool.take();
+		} catch (InterruptedException e1) {
+			mp = null;
+		}
+		while (mp != null && mp.liveTill < testTime) {
+			mp.kill();
+			try {
+				mp = pool.take();
+			} catch (InterruptedException e) {
+				mp = null;
+			}
+		}
+		if (mp != null)
+			pool.addFirst(mp);
+
+		while (usedPool.size() > 0
+				&& usedPool.get(0).liveTill < testTime) {
+			mp = usedPool.remove(0);
+			try {
+				mp.process.exitValue();
+			} catch (Exception e) {
+				mp.kill();
+			}
+		}
+	}
+
+	double updateEstimates(long sleep) {
+		// Prune datasets
+		while (startupTimeHistory.size() > averageCount)
+			startupTimeHistory.remove(0);
+		while (requestTimeHistory.size() > averageCount)
+			requestTimeHistory.remove(0);
+
+		// Do estimates
+		startupTimeEstimate = 0;
+		for (long t : startupTimeHistory)
+			startupTimeEstimate += t;
+		startupTimeEstimate /= startupTimeHistory.size();
+
+		// +1 just to make sure that a startup moment exception can
+		// be skipped
+		demandEstimate = requestTimeHistory.size()
+				/ ((System.currentTimeMillis() - requestTimeHistory
+						.get(0)) + 1.0);
+
+		// Guestimate demand for N
+		double N = demandEstimate * safetyMultiplier * sleep;
+
+		if (N < poolMin)
+			N = poolMin;
+		if (N > poolMax)
+			N = poolMax;
+		return N;
+	}
+
+	void startProcesses(double numProcessesRequired) {
+		double numProcesses = pool.size() +
+				startupLimit - startupThrotle.availablePermits();
+
+		while (numProcesses < numProcessesRequired
+				&& startupThrotle.availablePermits() > 0) {
+			numProcesses += 1.0;
+			ProcessStarter starter = new ProcessStarter(this);
+			starter.start();
+		}
 	}
 
 	class MaximaProcess {
@@ -933,88 +911,6 @@ public class MaximaPool extends HttpServlet {
 			}
 
 			super.finalize();
-		}
-	}
-
-	/**
-	 * an utility for fast reading of STDOUT & STDERR...
-	 * 
-	 * @author Matti Harjula
-	 * 
-	 */
-	class InputStreamReaderSucker {
-
-		StringBuffer value = new StringBuffer();
-
-		Reader reader = null;
-
-		volatile boolean foundEnd = false;
-
-		Thread worker = null;
-
-		Semaphore runSwitch;
-
-		InputStreamReaderSucker(Reader source, Semaphore runSwitch) {
-			reader = source;
-			this.runSwitch = runSwitch;
-			start();
-		}
-
-		public void start() {
-			worker = new Thread() {
-				public void run() {
-					char[] buffy = new char[1024];
-					int i = 0;
-					while (!foundEnd) {
-						try {
-							runSwitch.acquire();
-						} catch (InterruptedException e1) {
-							// TODO Auto-generated catch block
-							e1.printStackTrace();
-						}
-						i = 0;
-						try {
-							if (reader.ready())
-								i = reader.read(buffy);
-						} catch (IOException e) {
-						}
-						runSwitch.release();
-						if (i > 0)
-							value.append(new String(buffy, 0, i));
-						else if (i == -1) {
-							foundEnd = true;
-							break;
-						}
-
-						// Sleep here so the stream does not get too much
-						// attention
-						try {
-							Thread.sleep(0, 100);
-						} catch (InterruptedException e) {
-						}
-					}
-					try {
-						if (foundEnd)
-							reader.close();
-					} catch (IOException e) {
-					}
-				}
-
-			};
-			worker.setName(Thread.currentThread().getName() + "-reader");
-			worker.start();
-		}
-
-		void close() {
-			foundEnd = true;
-			try {
-				reader.close();
-			} catch (IOException e) {
-			}
-		}
-
-		String currentValue() {
-			return value.toString();
 		}
 	}
 
