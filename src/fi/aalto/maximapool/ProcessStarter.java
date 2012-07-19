@@ -1,6 +1,5 @@
 package fi.aalto.maximapool;
 
-import fi.aalto.maximapool.MaximaPool.MaximaProcess;
 
 /**
  * A thread that starts one process and adds it to the pool.
@@ -26,7 +25,7 @@ class ProcessStarter extends Thread {
 	@Override
 	public void run() {
 		maximaPool.notifyStartingProcess();
-		MaximaProcess mp = this.maximaPool.new MaximaProcess();
+		MaximaProcess mp = new MaximaProcess(maximaPool.processBuilder, maximaPool.config);
 		maximaPool.notifyProcessReady(mp);
 	}
 }
