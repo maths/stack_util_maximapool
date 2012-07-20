@@ -20,8 +20,7 @@ public class UpkeepThread extends Thread {
 	 * @param sleepTime the time to wait between each call to doMaintenance in milliseconds.
 	 */
 	public UpkeepThread(Maintainable thingToMaintain, long sleepTime) {
-		super();
-		setName("MaximaPool-upkeep");
+		super("MaximaPool-upkeep");
 		setDaemon(true);
 		this.target = thingToMaintain;
 		sleep = sleepTime;
@@ -40,11 +39,16 @@ public class UpkeepThread extends Thread {
 	@Override
 	public void run() {
 		while (!stopNow) {
-			target.doMaintenance(sleep);
+			try {
+				target.doMaintenance(sleep);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
 
 			try {
 				Thread.sleep(sleep);
 			} catch (InterruptedException e) {
+				e.printStackTrace();
 			}
 		}
 	}

@@ -36,7 +36,8 @@ public class ReaderSucker {
 
 	/** Start the worker thread. */
 	private void start() {
-		Thread worker = new Thread() {
+		String threadName = Thread.currentThread().getName().replace("-starter-", "-readersucker-");
+		Thread worker = new Thread(threadName) {
 			public void run() {
 				char[] buffy = new char[1024];
 				int i = 0;

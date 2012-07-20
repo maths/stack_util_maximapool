@@ -81,7 +81,7 @@ public abstract class StringUtils {
 	 * @return that time, nicely formatted for output.
 	 */
 	public static String formatTimestamp(Date date) {
-		return (new SimpleDateFormat("HH:mm:ss yyyy-MM-dd")).format(date);
+		return (new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")).format(date);
 	}
 
 	/**
@@ -106,6 +106,7 @@ public abstract class StringUtils {
 					result.append('s');
 				}
 				started = true;
+				durationMillis -= num * intervals[i];
 			}
 		}
 

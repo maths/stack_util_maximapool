@@ -1,6 +1,9 @@
 package fi.aalto.maximapool;
 
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.Collections;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -39,7 +42,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 	/** Estimated startup time (ms). */
 	private long startupTimeEstimate = 2000;
 
-	/** Estimated request frequency (Hz). */
+	/** Estimated request frequency (mHz). */
 	private double demandEstimate = 0.001;
 
 	/** Used to restrict the number of processes starting up at any one time. */
@@ -246,16 +249,15 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		}
 
 		// Do estimates
-		startupTimeEstimate = 0;
+		long totalTime = 0;
 		for (long t : startupTimeHistory) {
-			startupTimeEstimate += t;
+			totalTime += t;
 		}
-		startupTimeEstimate /= startupTimeHistory.size();
+		startupTimeEstimate = totalTime / startupTimeHistory.size();
 
-		// +1 just to make sure that a startup moment exception can
-		// be skipped
+		// Math.max(..., 1) to avoid divide by zeros.
 		demandEstimate = requestTimeHistory.size()
-				/ ((System.currentTimeMillis() - requestTimeHistory.get(0)) + 1.0);
+				/ Math.max(System.currentTimeMillis() - requestTimeHistory.get(0), 1.0);
 
 		// Guestimate demand for N
 		double estimate = demandEstimate * poolConfig.safetyMultiplier * sleep;
@@ -274,8 +276,23 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 				(poolConfig.startupLimit - startupThrotle.availablePermits()));
 		status.put("Ready processes in the pool", "" + pool.size());
 		status.put("Processes in use", "" + usedPool.size());
+		status.put("Total number of processes started", "" + startCount);
 		status.put("Current demand estimate", demandEstimate * 1000.0 + " Hz");
-		status.put("Current startuptime", startupTimeEstimate + " ms");
+		status.put("Current start-up time estimate", startupTimeEstimate + " ms");
+
+		StringBuffer startupTimes = new StringBuffer(100);
+		for (long time : startupTimeHistory) {
+			startupTimes.append(time);
+			startupTimes.append(" ms ");
+		}
+		status.put("Recent start-up times", startupTimes.toString());
+
+		DateFormat df = new SimpleDateFormat("HH:mm:ss ");
+		StringBuffer requestTimes = new StringBuffer(100);
+		for (long time : requestTimeHistory) {
+			requestTimes.append(df.format(new Date(time)));
+		}
+		status.put("Recent request times", requestTimes.toString());
 
 		return status;
 	}
