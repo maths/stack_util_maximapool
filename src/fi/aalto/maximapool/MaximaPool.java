@@ -22,7 +22,7 @@ import utils.UpkeepThread;
 public class MaximaPool implements UpkeepThread.Maintainable {
 
 	/** The configuration for the pool. */
-	private MaximaProcessConfig config;
+	private MaximaProcessConfig processConfig;
 
 	/** The configuration for the processes we create. */
 	private MaximaPoolConfig poolConfig;
@@ -70,7 +70,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 	MaximaPool(MaximaPoolConfig poolConfig, MaximaProcessConfig processConfig) {
 
 		this.poolConfig = poolConfig;
-		this.config = processConfig;
+		this.processConfig = processConfig;
 
 		// Initialise the datasets.
 		startupTimeHistory.add(poolConfig.startupTimeInitialEstimate);
@@ -78,8 +78,8 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 
 		// Set up the processBuilder
 		processBuilder = new ProcessBuilder();
-		processBuilder.command(config.cmdLine.split(" "));
-		processBuilder.directory(config.cwd);
+		processBuilder.command(processConfig.cmdLine.split(" "));
+		processBuilder.directory(processConfig.cwd);
 		processBuilder.redirectErrorStream(true);
 
 		// Create the startup throttle.
@@ -90,41 +90,24 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		upKeep.start();
 	}
 
-	/**
-	 * Tells the pool that a process is being started.
-	 * This method will not return until a startupThrotle semaphore has been
-	 * acquired.
-	 */
-	void notifyStartingProcess() {
-		startupThrotle.acquireUninterruptibly();
-	}
+	void destroy() {
+		// Kill the upkeep thread.
+		try {
+			upKeep.stopRunning();
+		} catch (InterruptedException e) {
+		}
 
-	/**
-	 * Tells the pool that a process has started up, and is ready for use.
-	 * @param mp the newly started process.
-	 */
-	void notifyProcessReady(MaximaProcess mp, long startupTime) {
-		startupTimeHistory.add(startupTime);
-		pool.add(mp);
-		startupThrotle.release();
-	}
+		// Kill all running processes.
+		for (MaximaProcess mp : pool) {
+			mp.kill();
+		}
+		pool.clear();
 
-	/**
-	 * @return Map<String, String> a hash map containing data about
-	 * the current state of the pool.
-	 */
-	Map<String, String> getStatus() {
-
-		Map<String, String> status = new LinkedHashMap<String, String>();
-
-		status.put("Processes starting up", "" +
-				(poolConfig.startupLimit - startupThrotle.availablePermits()));
-		status.put("Ready processes in the pool", "" + pool.size());
-		status.put("Processes in use", "" + usedPool.size());
-		status.put("Current demand estimate", demandEstimate * 1000.0 + " Hz");
-		status.put("Current startuptime", startupTimeEstimate + " ms");
-
-		return status;
+		// Kill all used processes.
+		for (MaximaProcess mp : usedPool) {
+			mp.kill();
+		}
+		usedPool.clear();
 	}
 
 	/**
@@ -143,6 +126,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 			try {
 				mp = pool.take();
 			} catch (InterruptedException e) {
+				// If we failed to get one, wait a bit.
 				e.printStackTrace();
 				try {
 					Thread.sleep(3);
@@ -157,10 +141,70 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		return mp;
 	}
 
+	/**
+	 * Low-level that creates a process in the current thread, and does not add
+	 * it to the pool.
+	 * @return the new process.
+	 */
+	MaximaProcess makeProcess() {
+		return new MaximaProcess(processBuilder, processConfig);
+	}
+
+	/**
+	 * Start a process asynchronously, and add it to the pool when done.
+	 * @return the new process.
+	 */
+	void startProcess() {
+		startCount++;
+		String threadName = Thread.currentThread().getName() + "-starter-" + startCount;
+		Thread starter = new Thread(threadName) {
+			@Override
+			public void run() {
+				startupThrotle.acquireUninterruptibly();
+				long startTime = System.currentTimeMillis();
+				MaximaProcess mp = makeProcess();
+				startupTimeHistory.add(System.currentTimeMillis() - startTime);
+				pool.add(mp);
+				startupThrotle.release();
+			}
+		};
+		starter.start();
+	}
+
+	/**
+	 * Start up as many processes as may be required to get the pool to the level
+	 * it should be at.
+	 * @param numProcessesRequired
+	 */
+	void startProcesses(double numProcessesRequired) {
+		double numProcesses = pool.size() +
+				poolConfig.startupLimit - startupThrotle.availablePermits();
+
+		while (numProcesses < numProcessesRequired
+				&& startupThrotle.availablePermits() > 0) {
+			numProcesses += 1.0;
+			startProcess();
+		}
+	}
+
+	/**
+	 * Use to tell us that a particular process has finished.
+	 * @param mp the process that has finished.
+	 */
 	void notifyProcessFinishedWith(MaximaProcess mp) {
 		usedPool.remove(mp);
 	}
 
+	@Override
+	public void doMaintenance(long sleepTime) {
+		killOverdueProcesses();
+		double numProcessesRequired = updateEstimates(sleepTime);
+		startProcesses(numProcessesRequired);
+	}
+
+	/**
+	 * Maintenance task that detects stale processes that should be killed.
+	 */
 	void killOverdueProcesses() {
 		long testTime = System.currentTimeMillis();
 
@@ -188,6 +232,9 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		}
 	}
 
+	/**
+	 * Maintenance task that updates the estimates that are used to manaage the pool.
+	 */
 	double updateEstimates(long sleep) {
 		// Prune datasets
 		while (startupTimeHistory.size() > poolConfig.averageCount) {
@@ -214,60 +261,21 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		return Math.min(Math.max(estimate, poolConfig.poolMin), poolConfig.poolMax);
 	}
 
-	MaximaProcess makeProcess() {
-		return new MaximaProcess(processBuilder, config);
-	}
+	/**
+	 * @return Map<String, String> a hash map containing data about
+	 * the current state of the pool.
+	 */
+	Map<String, String> getStatus() {
 
-	void startProcess() {
-		startCount++;
-		String threadName = Thread.currentThread().getName() + "-starter-" + startCount;
-		Thread starter = new Thread(threadName) {
-			@Override
-			public void run() {
-				notifyStartingProcess();
-				long startTime = System.currentTimeMillis();
-				MaximaProcess mp = makeProcess();
-				notifyProcessReady(mp, System.currentTimeMillis() - startTime);
-			}
-		};
-		starter.start();
-	}
+		Map<String, String> status = new LinkedHashMap<String, String>();
 
-	void startProcesses(double numProcessesRequired) {
-		double numProcesses = pool.size() +
-				poolConfig.startupLimit - startupThrotle.availablePermits();
+		status.put("Processes starting up", "" +
+				(poolConfig.startupLimit - startupThrotle.availablePermits()));
+		status.put("Ready processes in the pool", "" + pool.size());
+		status.put("Processes in use", "" + usedPool.size());
+		status.put("Current demand estimate", demandEstimate * 1000.0 + " Hz");
+		status.put("Current startuptime", startupTimeEstimate + " ms");
 
-		while (numProcesses < numProcessesRequired
-				&& startupThrotle.availablePermits() > 0) {
-			numProcesses += 1.0;
-			startProcess();
-		}
-	}
-
-	void destroy() {
-		// Kill the upkeep thread.
-		try {
-			upKeep.stopRunning();
-		} catch (InterruptedException e) {
-		}
-
-		// Kill all running processes.
-		for (MaximaProcess mp : pool) {
-			mp.kill();
-		}
-		pool.clear();
-
-		// Kill all used processes.
-		for (MaximaProcess mp : usedPool) {
-			mp.kill();
-		}
-		usedPool.clear();
-	}
-
-	@Override
-	public void doMaintenance(long sleepTime) {
-		killOverdueProcesses();
-		double numProcessesRequired = updateEstimates(sleepTime);
-		startProcesses(numProcessesRequired);
+		return status;
 	}
 }

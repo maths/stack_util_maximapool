@@ -121,6 +121,9 @@ class MaximaProcess {
 	/**
 	 * Actually process a command.
 	 *
+	 * After calling this method, you should call MaximaPool.notifyProcessFinishedWith
+	 * to tell the pool that this processes has died.
+	 *
 	 * @param command the command to execute.
 	 * @param timeout limit in ms
 	 * @return true if we did not timeout.
