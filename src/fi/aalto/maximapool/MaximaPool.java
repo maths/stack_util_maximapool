@@ -52,7 +52,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 
 	private UpkeepThread upKeep;
 
-	MaximaPool(Properties properties) {
+	MaximaPool(MaximaProcessConfig config, Properties properties) {
 		updateCycle = Long.parseLong(properties.getProperty(
 				"pool.update.cycle", "500"));
 		startupTimeEstimate = Long.parseLong(properties.getProperty(
@@ -68,7 +68,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		poolMax = Integer.parseInt(properties.getProperty("pool.size.max",
 				"100"));
 
-		config = new MaximaProcessConfig(properties);
+		this.config = config;
 
 		// Initialise the datasets.
 		startupTimeHistory.add(startupTimeEstimate);

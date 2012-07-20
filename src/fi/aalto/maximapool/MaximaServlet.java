@@ -5,6 +5,7 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
@@ -37,6 +38,9 @@ public class MaximaServlet extends HttpServlet {
 	private static final long serialVersionUID = -8604075780786871066L;
 
 	/** The process pool we are using. */
+	private MaximaProcessConfig processConfig = new MaximaProcessConfig();
+
+	/** The process pool we are using. */
 	private MaximaPool maximaPool;
 
 	/** Records when the servlet started. */
@@ -53,7 +57,17 @@ public class MaximaServlet extends HttpServlet {
 			Properties properties = new Properties();
 			properties.load(Thread.currentThread().getContextClassLoader()
 					.getResourceAsStream("maximapool.conf"));
-			maximaPool = new MaximaPool(properties);
+
+			File extraConfig = new File(properties.getProperty("extra.config", "false"));
+			if (!"false".equals(extraConfig.getName()) && extraConfig.isFile()) {
+				FileReader reader = new FileReader(extraConfig);
+				properties.load(reader);
+				reader.close();
+			}
+
+			processConfig.loadProperties(properties);
+
+			maximaPool = new MaximaPool(processConfig, properties);
 
 		} catch (IOException e) {
 			System.out.println("Load error: did you lose maximapool.conf?");
@@ -81,13 +95,13 @@ public class MaximaServlet extends HttpServlet {
 
 		PrintWriter out = healthcheckStartOutput(response);
 
-		out.write("<p>Executing command-line: " + maximaPool.config.cmdLine + "</p>");
+		out.write("<p>Executing command-line: " + processConfig.cmdLine + "</p>");
 		out.flush();
 
 		String currentOutput = "";
 
 		Process process = null;
-		long startupTime = System.currentTimeMillis();
+		long startTime = System.currentTimeMillis();
 		try {
 			process = maximaPool.processBuilder.start();
 		} catch (IOException e) {
@@ -103,32 +117,34 @@ public class MaximaServlet extends HttpServlet {
 		OutputStreamWriter input = new OutputStreamWriter(new BufferedOutputStream(
 				process.getOutputStream()));
 
-		String test = maximaPool.config.loadReady;
+		String test = processConfig.loadReady;
 
-		if (maximaPool.config.load == null) {
-			test = maximaPool.config.useReady;
+		if (processConfig.load == null) {
+			test = processConfig.useReady;
 		}
 
-		currentOutput = healthcheckWaitForOutput(test, output, currentOutput, out, startupTime);
+		currentOutput = healthcheckWaitForOutput(test, output, currentOutput, out, startTime);
 
-		if (maximaPool.config.load != null) {
-			String command = "load(\"" + maximaPool.config.load.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\") + "\");\n";
+		if (processConfig.load != null) {
+			String command = "load(\"" + processConfig.load.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\") + "\");\n";
 			healthcheckSendCommand(command, input, out);
-			currentOutput = healthcheckWaitForOutput(maximaPool.config.useReady, output, currentOutput, out, startupTime);
+			currentOutput = healthcheckWaitForOutput(processConfig.useReady, output, currentOutput, out, startTime);
 		}
 
-		out.write("<p>startupTime = " + (System.currentTimeMillis() - startupTime) + "</p>");
+		out.write("<p>Start-up time: " + (System.currentTimeMillis() - startTime) + " ms</p>");
 
 		String killStringGen = "concat(\""
-				+ maximaPool.config.killString.substring(0, maximaPool.config.killString.length() / 2)
-				+ "\",\"" + maximaPool.config.killString.substring(maximaPool.config.killString.length() / 2)
+				+ processConfig.killString.substring(0, processConfig.killString.length() / 2)
+				+ "\",\"" + processConfig.killString.substring(processConfig.killString.length() / 2)
 				+ "\");\n";
 
 		healthcheckSendCommand("1+1;\n" + killStringGen, input, out);
-		currentOutput = healthcheckWaitForOutput(maximaPool.config.killString, output, currentOutput, out, startupTime);
+		currentOutput = healthcheckWaitForOutput(processConfig.killString, output, currentOutput, out, startTime);
 
 		healthcheckSendCommand("quit();\n", input, out);
 		input.close();
+
+		out.write("<p>Total time: " + (System.currentTimeMillis() - startTime) + " ms</p>");
 
 		out.write("</body></html>");
 	}
@@ -211,7 +227,8 @@ public class MaximaServlet extends HttpServlet {
 
 		Writer out = healthcheckStartOutput(response);
 
-		MaximaProcess mp = new MaximaProcess(maximaPool.processBuilder, maximaPool.config);
+		long startTime = System.currentTimeMillis();
+		MaximaProcess mp = new MaximaProcess(maximaPool.processBuilder, processConfig);
 		String firstOutput = mp.output.currentValue();
 		out.write("<pre>" + firstOutput + "</pre>");
 		out.flush();
@@ -224,6 +241,7 @@ public class MaximaServlet extends HttpServlet {
 		out.write("<pre>" + secondOutput.substring(firstOutput.length()) + "</pre>");
 		out.flush();
 
+		out.write("<p>Time taken: " + (System.currentTimeMillis() - startTime) + " ms</p>");
 		out.write("</body></html>");
 	}
 

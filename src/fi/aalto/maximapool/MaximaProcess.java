@@ -94,7 +94,7 @@ class MaximaProcess {
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
-			if (System.currentTimeMillis() > startupTime + STARTUP_TIMEOUT) {
+			if (System.currentTimeMillis() > startupTime + config.startupTime) {
 				throw new RuntimeException("Process start timeout");
 			}
 		}

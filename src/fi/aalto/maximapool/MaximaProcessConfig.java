@@ -13,12 +13,13 @@ public class MaximaProcessConfig {
 	public File load = null;
 	public String loadReady = "(%i1)";
 	public String useReady = "(%i1)";
+	public long startupTime = 10000;
 	public long executionTime = 30000;
 	public long lifeTime = 60000000;
 
 	public MaximaProcessConfig() {}
 
-	public MaximaProcessConfig(Properties properties) {
+	public void loadProperties(Properties properties) {
 		startupLimit = Integer.parseInt(properties.getProperty(
 				"pool.start.limit", "" + startupLimit));
 		cmdLine = properties.getProperty("maxima.commandline", cmdLine);
@@ -35,6 +36,8 @@ public class MaximaProcessConfig {
 		pathCommandTemplate = properties.getProperty("maxima.path.command",
 				pathCommandTemplate);
 
+		startupTime = Long.parseLong(properties.getProperty(
+				"pool.startup.time.limit", "" + startupTime));
 		executionTime = Long.parseLong(properties.getProperty(
 				"pool.execution.time.limit", "" + executionTime));
 		lifeTime = Long.parseLong(properties.getProperty(
