@@ -1,6 +1,5 @@
 package fi.aalto.maximapool;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -249,29 +248,6 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 			ProcessStarter starter = new ProcessStarter(this);
 			starter.start();
 		}
-	}
-
-	/**
-	 * Lists all the files under this dir if sub dirs are listed they are listed
-	 * in such an order that you may delete all the files in the order of the
-	 * list.
-	 * 
-	 * @param baseDir
-	 * @param listDirs
-	 * @return
-	 */
-	public static List<File> listFilesInOrder(File baseDir, boolean listDirs) {
-		List<File> R = new LinkedList<File>();
-
-		for (File f : baseDir.listFiles())
-			if (f.isDirectory()) {
-				R.addAll(listFilesInOrder(f, listDirs));
-				if (listDirs)
-					R.add(f);
-			} else
-				R.add(f);
-
-		return R;
 	}
 
 	void destroy() {

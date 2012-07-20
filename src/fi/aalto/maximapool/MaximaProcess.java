@@ -241,17 +241,14 @@ class MaximaProcess {
 		if (!config.fileHandling) {
 			return new LinkedList<File>();
 		}
-		return MaximaPool.listFilesInOrder(new File(baseDir, "output"), false);
+		return FileUtils.listFiles(new File(baseDir, "output"));
 	}
 
 	@Override
 	protected void finalize() throws Throwable {
 		kill();
 		if (config.fileHandling) {
-			for (File f : MaximaPool.listFilesInOrder(baseDir, true)) {
-				f.delete();
-			}
-			baseDir.delete();
+			FileUtils.deleteDirectoryRecursive(baseDir);
 		}
 
 		super.finalize();
