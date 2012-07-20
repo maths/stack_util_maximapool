@@ -45,12 +45,6 @@ class MaximaProcessConfig {
 	String killString = "--COMPLETED--kill--PROCESS--";
 
 	/**
-	 * The maximum number of processes that are allowed to be starting at any
-	 * one time.
-	 */
-	int startupLimit = 20;
-
-	/**
 	 * The timeout (ms) to use when starting processes. If a process takes longer
 	 * than this to become ready, it is killed.
 	 */
@@ -86,8 +80,6 @@ class MaximaProcessConfig {
 	 * @param properties the Properties to read.
 	 */
 	void loadProperties(Properties properties) {
-		startupLimit = Integer.parseInt(properties.getProperty(
-				"pool.start.limit", "" + startupLimit));
 		cmdLine = properties.getProperty("maxima.commandline", cmdLine);
 		loadReady = properties.getProperty("maxima.ready.for.load", loadReady);
 		useReady = properties.getProperty("maxima.ready.for.use", useReady);

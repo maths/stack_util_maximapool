@@ -40,8 +40,11 @@ public class MaximaServlet extends HttpServlet {
 
 	private static final long serialVersionUID = -8604075780786871066L;
 
-	/** The process pool we are using. */
+	/** The configuration for the pool. */
 	private MaximaProcessConfig processConfig = new MaximaProcessConfig();
+
+	/** The configuration for the processes we create. */
+	private MaximaPoolConfig poolConfig = new MaximaPoolConfig();
 
 	/** The process pool we are using. */
 	private MaximaPool maximaPool;
@@ -69,14 +72,13 @@ public class MaximaServlet extends HttpServlet {
 			}
 
 			processConfig.loadProperties(properties);
-
-			maximaPool = new MaximaPool(processConfig, properties);
+			poolConfig.loadProperties(properties);
 
 		} catch (IOException e) {
-			System.out.println("Load error: did you lose maximapool.conf?");
 			e.printStackTrace();
 		}
 
+		maximaPool = new MaximaPool(poolConfig, processConfig);
 	}
 
 	@Override
@@ -327,6 +329,9 @@ public class MaximaServlet extends HttpServlet {
 		out.write("<h3>Test form</h3>");
 		out.write("<p>Input something for evaluation</p>");
 		out.write("<form method='post'><textarea name='input'></textarea><br/>Timeout (ms): <select name='timeout'><option value='1000'>1000</option><option value='2000'>2000</option><option value='3000' selected='selected'>3000</option><option value='4000'>4000</option><option value='5000'>5000</option></select><br/><input type='submit' value='Eval'/></form>");
+
+		out.write("<h3>Maxima pool configuration</h3>");
+		outputMapAsTable(out, poolConfig.describe());
 
 		out.write("<h3>Maxima process configuration</h3>");
 		outputMapAsTable(out, processConfig.describe());

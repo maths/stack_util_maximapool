@@ -5,7 +5,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.Semaphore;
@@ -22,60 +21,59 @@ import utils.UpkeepThread;
  */
 public class MaximaPool implements UpkeepThread.Maintainable {
 
-	private ProcessBuilder processBuilder;
-
-	private long updateCycle = 500;
-	private long startupTimeEstimate = 2000;
-	private double demandEstimate = 0.001;
-	private int averageCount = 5;
-	private double safetyMultiplier = 3.0;
-
-	// These should probably be volatile, but then you would need to make sure
-	// that the processes die though some other means.
-
-	// The pool for ready processes
-	private BlockingDeque<MaximaProcess> pool = new LinkedBlockingDeque<MaximaProcess>();
-
-	// The pool of processes in use
-	private List<MaximaProcess> usedPool = Collections
-			.synchronizedList(new LinkedList<MaximaProcess>());
-
-	private int poolMin = 5;
-	private int poolMax = 100;
+	/** The configuration for the pool. */
 	private MaximaProcessConfig config;
 
-	private List<Long> startupTimeHistory = Collections
-			.synchronizedList(new LinkedList<Long>());
-	private List<Long> requestTimeHistory = Collections
-			.synchronizedList(new LinkedList<Long>());
+	/** The configuration for the processes we create. */
+	private MaximaPoolConfig poolConfig;
 
-	private volatile Semaphore startupThrotle;
-
+	/** The maintenance thread. */
 	private UpkeepThread upKeep;
 
 	/** Used to generate unique thread names. */
 	static private long startCount = 0;
 
-	MaximaPool(MaximaProcessConfig config, Properties properties) {
-		updateCycle = Long.parseLong(properties.getProperty(
-				"pool.update.cycle", "500"));
-		startupTimeEstimate = Long.parseLong(properties.getProperty(
-				"pool.adaptation.startuptime.initial.estimate", "2000"));
-		demandEstimate = Double.parseDouble(properties.getProperty(
-				"pool.adaptation.demand.initial.estimate", "0.001"));
-		averageCount = Integer.parseInt(properties.getProperty(
-				"pool.adaptation.averages.length", "5"));
-		safetyMultiplier = Double.parseDouble(properties.getProperty(
-				"pool.adaptation.safety.multiplier", "3.0"));
-		poolMin = Integer.parseInt(properties.getProperty("pool.size.min",
-				"5"));
-		poolMax = Integer.parseInt(properties.getProperty("pool.size.max",
-				"100"));
+	/** Factory for Maxima processes. */
+	private ProcessBuilder processBuilder;
 
-		this.config = config;
+	/** Estimated startup time (ms). */
+	private long startupTimeEstimate = 2000;
+
+	/** Estimated request frequency (Hz). */
+	private double demandEstimate = 0.001;
+
+	/** Used to restrict the number of processes starting up at any one time. */
+	private volatile Semaphore startupThrotle;
+
+	// These should probably be volatile, but then you would need to make sure
+	// that the processes die though some other means.
+
+	/** The pool for ready processes */
+	private BlockingDeque<MaximaProcess> pool = new LinkedBlockingDeque<MaximaProcess>();
+
+	/** The pool of processes in use */
+	private List<MaximaProcess> usedPool = Collections
+			.synchronizedList(new LinkedList<MaximaProcess>());
+
+	/** The last few startup times, used to compute startupTimeEstimate. */
+	private List<Long> startupTimeHistory = Collections
+			.synchronizedList(new LinkedList<Long>());
+
+	/** The last few request times, used to compute demandEstimate. */
+	private List<Long> requestTimeHistory = Collections
+			.synchronizedList(new LinkedList<Long>());
+
+	/**
+	 * @param poolConfig the configuration for the pool.
+	 * @param processConfig the configuration for the processes we create.
+	 */
+	MaximaPool(MaximaPoolConfig poolConfig, MaximaProcessConfig processConfig) {
+
+		this.poolConfig = poolConfig;
+		this.config = processConfig;
 
 		// Initialise the datasets.
-		startupTimeHistory.add(startupTimeEstimate);
+		startupTimeHistory.add(poolConfig.startupTimeInitialEstimate);
 		requestTimeHistory.add(System.currentTimeMillis());
 
 		// Set up the processBuilder
@@ -85,10 +83,10 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		processBuilder.redirectErrorStream(true);
 
 		// Create the startup throttle.
-		this.startupThrotle = new Semaphore(config.startupLimit);
+		this.startupThrotle = new Semaphore(poolConfig.startupLimit);
 
 		// Start the upkeep thread.
-		upKeep = new UpkeepThread(this, updateCycle);
+		upKeep = new UpkeepThread(this, poolConfig.updateCycle);
 		upKeep.start();
 	}
 
@@ -121,13 +119,8 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 
 		status.put("Ready processes in the pool", "" + pool.size());
 		status.put("Processes in use", "" + usedPool.size());
-		status.put("Min pool size", "" + poolMin);
-		status.put("Max pool size", "" + poolMax);
 		status.put("Current demand estimate", demandEstimate * 1000.0 + " Hz");
 		status.put("Current startuptime", startupTimeEstimate + " ms");
-		status.put("Pool update cycle time", updateCycle + " ms");
-		status.put("Number of data points for averages", "" + averageCount);
-		status.put("Pool size safety multiplier", "" + safetyMultiplier);
 
 		return status;
 	}
@@ -195,31 +188,28 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 
 	double updateEstimates(long sleep) {
 		// Prune datasets
-		while (startupTimeHistory.size() > averageCount)
+		while (startupTimeHistory.size() > poolConfig.averageCount) {
 			startupTimeHistory.remove(0);
-		while (requestTimeHistory.size() > averageCount)
+		}
+		while (requestTimeHistory.size() > poolConfig.averageCount) {
 			requestTimeHistory.remove(0);
+		}
 
 		// Do estimates
 		startupTimeEstimate = 0;
-		for (long t : startupTimeHistory)
+		for (long t : startupTimeHistory) {
 			startupTimeEstimate += t;
+		}
 		startupTimeEstimate /= startupTimeHistory.size();
 
 		// +1 just to make sure that a startup moment exception can
 		// be skipped
 		demandEstimate = requestTimeHistory.size()
-				/ ((System.currentTimeMillis() - requestTimeHistory
-						.get(0)) + 1.0);
+				/ ((System.currentTimeMillis() - requestTimeHistory.get(0)) + 1.0);
 
 		// Guestimate demand for N
-		double N = demandEstimate * safetyMultiplier * sleep;
-
-		if (N < poolMin)
-			N = poolMin;
-		if (N > poolMax)
-			N = poolMax;
-		return N;
+		double estimate = demandEstimate * poolConfig.safetyMultiplier * sleep;
+		return Math.min(Math.max(estimate, poolConfig.poolMin), poolConfig.poolMax);
 	}
 
 	MaximaProcess makeProcess() {
@@ -243,7 +233,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 
 	void startProcesses(double numProcessesRequired) {
 		double numProcesses = pool.size() +
-				config.startupLimit - startupThrotle.availablePermits();
+				poolConfig.startupLimit - startupThrotle.availablePermits();
 
 		while (numProcesses < numProcessesRequired
 				&& startupThrotle.availablePermits() > 0) {
