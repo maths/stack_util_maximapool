@@ -23,7 +23,8 @@ import java.util.Date;
 
 /** Utilities related to strings and string formatting */
 public abstract class StringUtils {
-	private static final long MINUTE = 60*1000;
+	private static final long SECOND = 1000;
+	private static final long MINUTE = 60*SECOND;
 	private static final long HOUR = 60*MINUTE;
 	private static final long DAY = 24*HOUR;
 
@@ -80,7 +81,7 @@ public abstract class StringUtils {
 	 * @return that time, nicely formatted for output.
 	 */
 	public static String formatTimestamp(Date date) {
-		return (new SimpleDateFormat("HH:mm yyyy-MM-dd")).format(date);
+		return (new SimpleDateFormat("HH:mm:ss yyyy-MM-dd")).format(date);
 	}
 
 	/**
@@ -88,8 +89,8 @@ public abstract class StringUtils {
 	 * @return a nicely formatted string representation of that duration.
 	 */
 	public static String formatDuration(long durationMillis) {
-		long[] intervals = new long[] {MINUTE, HOUR, DAY};
-		String[] words = new String[] {" minute", " hour", " day"};
+		long[] intervals = new long[] {SECOND, MINUTE, HOUR, DAY};
+		String[] words = new String[] {" second", " minute", " hour", " day"};
 
 		StringBuffer result = new StringBuffer(100);
 		boolean started = false;
@@ -100,7 +101,6 @@ public abstract class StringUtils {
 					result.append(", ");
 				}
 				result.append(num);
-				result.append(' ');
 				result.append(words[i]);
 				if (num > 1) {
 					result.append('s');
