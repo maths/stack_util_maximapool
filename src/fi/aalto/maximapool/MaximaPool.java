@@ -41,7 +41,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 
 	private int poolMin = 5;
 	private int poolMax = 100;
-	MaximaProcessConfig config;
+	private MaximaProcessConfig config;
 
 	List<Long> startupTimeHistory = Collections
 			.synchronizedList(new LinkedList<Long>());
@@ -51,6 +51,9 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 	volatile Semaphore startupThrotle;
 
 	private UpkeepThread upKeep;
+
+	/** Used to generate unique thread names. */
+	static private long startCount = 0;
 
 	MaximaPool(MaximaProcessConfig config, Properties properties) {
 		updateCycle = Long.parseLong(properties.getProperty(
@@ -149,8 +152,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 
 		// Start a new one as we are going to take one...
 		if (startupThrotle.availablePermits() > 0) {
-			ProcessStarter starter = new ProcessStarter(this);
-			starter.start();
+			startProcess();
 		}
 
 		MaximaProcess mp = null;
@@ -238,6 +240,20 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		return N;
 	}
 
+	void startProcess() {
+		startCount++;
+		String threadName = Thread.currentThread().getName() + "-starter-" + startCount;
+		Thread starter = new Thread(threadName) {
+			@Override
+			public void run() {
+				notifyStartingProcess();
+				MaximaProcess mp = new MaximaProcess(processBuilder, config);
+				notifyProcessReady(mp);
+			}
+		};
+		starter.start();
+	}
+
 	void startProcesses(double numProcessesRequired) {
 		double numProcesses = pool.size() +
 				config.startupLimit - startupThrotle.availablePermits();
@@ -245,8 +261,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		while (numProcesses < numProcessesRequired
 				&& startupThrotle.availablePermits() > 0) {
 			numProcesses += 1.0;
-			ProcessStarter starter = new ProcessStarter(this);
-			starter.start();
+			startProcess();
 		}
 	}
 

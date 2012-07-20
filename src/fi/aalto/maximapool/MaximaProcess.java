@@ -13,9 +13,7 @@ import java.util.concurrent.Semaphore;
 
 class MaximaProcess {
 
-	public static final long STARTUP_TIMEOUT = 10000; // miliseconds
-
-	MaximaProcessConfig config;
+	private MaximaProcessConfig config;
 
 	Process process = null;
 
