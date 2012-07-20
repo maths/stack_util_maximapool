@@ -6,7 +6,7 @@
   <target name="dist">
 	<mkdir dir="build"/>
 	<copy file="maximapool.conf" tofile="build/maximapool.conf"/>
-	<javac srcdir="src" destdir="build" target="1.6" classpath="lib/servlet-api.jar" includeAntRuntime="false"/>
+	<javac srcdir="src" destdir="build" debug="on" target="1.6" classpath="lib/servlet-api.jar" includeAntRuntime="false"/>
 	<war destfile="MaximaPool.war" webxml="misc/web.xml" manifest="misc/MANIFEST.MF">
 		<classes dir="build"/>
 	</war>
