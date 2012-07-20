@@ -20,7 +20,7 @@ import java.util.concurrent.Semaphore;
  * 
  * @author Matti Harjula
  */
-public class MaximaPool {
+public class MaximaPool implements UpkeepThread.Maintainable {
 
 	ProcessBuilder processBuilder = new ProcessBuilder();
 
@@ -287,5 +287,12 @@ public class MaximaPool {
 			mp.kill();
 		}
 		pool.clear();
+	}
+
+	@Override
+	public void doMaintenance(long sleepTime) {
+		killOverdueProcesses();
+		double numProcessesRequired = updateEstimates(sleepTime);
+		startProcesses(numProcessesRequired);
 	}
 }
