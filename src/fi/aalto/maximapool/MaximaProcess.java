@@ -97,47 +97,14 @@ class MaximaProcess {
 	}
 
 	/**
-	 * Helper method. Waits until a particular string is detected in the output,
-	 * before returning.
-	 * @param test string to look for in the output.
+	 * Deactivate the process. This is called once the processes has started up
+	 * and is ready to recieve input, and so is about to be added to the waiting
+	 * list of ready processes in the pool.
 	 */
-	private void waitForOutput(String test) {
-		while (output.currentValue().indexOf(test) < 0) {
-			try {
-				Thread.sleep(0, 200);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
-			if (System.currentTimeMillis() > liveTill) {
-				throw new RuntimeException("Process timed out.");
-			}
-		}
-	}
-
-	private void setupFiles() {
+	void deactivate() {
 		try {
-			baseDir = File.createTempFile("mp-", "-" + process.hashCode());
-			baseDir.delete();
-			baseDir.mkdirs();
-			File output = new File(baseDir, "output");
-			File work = new File(baseDir, "work");
-			output.mkdir();
-			work.mkdir();
-
-			String command = config.pathCommandTemplate;
-			command = command.replaceAll("%OUTPUT-DIR-NE%", output
-					.getCanonicalPath());
-			command = command.replaceAll("%WORK-DIR-NE%", work
-					.getCanonicalPath());
-			command = command.replaceAll("%OUTPUT-DIR%", output
-					.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\"));
-			command = command.replaceAll("%WORK-DIR%", work
-					.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\"));
-			input.write(command);
-			input.flush();
-		} catch (IOException e) {
-			System.out
-					.println("File handling failure, maybe the securitymanager has something against us?");
+			runSwitch.acquire();
+		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
 	}
@@ -149,19 +116,6 @@ class MaximaProcess {
 	void activate() {
 		liveTill += config.executionTime;
 		runSwitch.release(1);
-	}
-
-	/**
-	 * Deactivate the process. This is called once the processes has started up
-	 * and is ready to recieve input, and so is about to be added to the waiting
-	 * list of ready processes in the pool.
-	 */
-	void deactivate() {
-		try {
-			runSwitch.acquire();
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
 	}
 
 	/**
@@ -237,6 +191,57 @@ class MaximaProcess {
 	}
 
 	/**
+	 * Helper method. Waits until a particular string is detected in the output,
+	 * before returning.
+	 * @param test string to look for in the output.
+	 */
+	private void waitForOutput(String test) {
+		while (output.currentValue().indexOf(test) < 0) {
+			try {
+				Thread.sleep(0, 200);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			if (System.currentTimeMillis() > liveTill) {
+				throw new RuntimeException("Process timed out.");
+			}
+		}
+	}
+
+	/**
+	 * @return the output of executing the command, up to, but not including killString.
+	 */
+	String getOutput() {
+		String out = output.currentValue();
+		if (out.indexOf("\"" + config.killString) > 0) {
+			return out.substring(0, out.indexOf("\"" + config.killString));
+		} else if (out.indexOf(config.killString) > 0) {
+			return out.substring(0, out.indexOf(config.killString));
+		} else {
+			return out;
+		}
+	}
+
+	/**
+	 * @param testTime the time to consider as now. Typically System.currentTimeMillis().
+	 * @return whether testTime is after the liveTill time.
+	 */
+	boolean isOverdue(long testTime) {
+		return liveTill < testTime;
+	}
+
+	/**
+	 * If the process is not already finished, kill it.
+	 */
+	void close() {
+		try {
+			process.exitValue();
+		} catch (Exception e) {
+			kill();
+		}
+	}
+
+	/**
 	 * Forcibly end this process.
 	 */
 	void kill() {
@@ -262,13 +267,6 @@ class MaximaProcess {
 		}
 	}
 
-	List<File> filesGenerated() {
-		if (!config.fileHandling) {
-			return new LinkedList<File>();
-		}
-		return FileUtils.listFiles(new File(baseDir, "output"));
-	}
-
 	@Override
 	protected void finalize() throws Throwable {
 		kill();
@@ -280,38 +278,51 @@ class MaximaProcess {
 	}
 
 	/**
-	 * @return the output of executing the command, up to, but not including killString.
+	 * Set up file handling. This creates the directory, and sends a command
+	 * to Maxima giving the path.
 	 */
-	String getOutput() {
-		String out = output.currentValue();
-		if (out.indexOf("\"" + config.killString) > 0) {
-			return out.substring(0, out.indexOf("\"" + config.killString));
-		} else if (out.indexOf(config.killString) > 0) {
-			return out.substring(0, out.indexOf(config.killString));
-		} else {
-			return out;
-		}
-	}
-
-	/**
-	 * If the process is not already finished, kill it.
-	 */
-	void close() {
+	private void setupFiles() {
 		try {
-			process.exitValue();
-		} catch (Exception e) {
-			kill();
+			baseDir = File.createTempFile("mp-", "-" + process.hashCode());
+			baseDir.delete();
+			baseDir.mkdirs();
+			File output = new File(baseDir, "output");
+			File work = new File(baseDir, "work");
+			output.mkdir();
+			work.mkdir();
+
+			String command = config.pathCommandTemplate;
+			command = command.replaceAll("%OUTPUT-DIR-NE%", output
+					.getCanonicalPath());
+			command = command.replaceAll("%WORK-DIR-NE%", work
+					.getCanonicalPath());
+			command = command.replaceAll("%OUTPUT-DIR%", output
+					.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\"));
+			command = command.replaceAll("%WORK-DIR%", work
+					.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\"));
+			input.write(command);
+			input.flush();
+		} catch (IOException e) {
+			System.out.println("File handling failure, maybe the securitymanager has something against us?");
+			e.printStackTrace();
 		}
 	}
 
 	/**
-	 * @param testTime the time to consider as now. Typically System.currentTimeMillis().
-	 * @return whether testTime is after the liveTill time.
+	 * @return a list of the files generated while executing the command, if any.
 	 */
-	boolean isOverdue(long testTime) {
-		return liveTill < testTime;
+	List<File> filesGenerated() {
+		if (!config.fileHandling) {
+			return new LinkedList<File>();
+		}
+		return FileUtils.listFiles(new File(baseDir, "output"));
 	}
 
+	/**
+	 * Add the generated files to a given Zip stream.
+	 * @param zos
+	 * @throws IOException
+	 */
 	void addGeneratedFilesToZip(ZipOutputStream zos) throws IOException {
 		byte[] buffy = new byte[4096];
 
