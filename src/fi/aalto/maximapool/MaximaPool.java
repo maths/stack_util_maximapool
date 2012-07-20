@@ -1,6 +1,5 @@
 package fi.aalto.maximapool;
 
-import java.io.IOException;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -10,6 +9,8 @@ import java.util.Properties;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.Semaphore;
+
+import utils.UpkeepThread;
 
 /**
  * <p>
@@ -104,43 +105,29 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 	 * Tells the pool that a process has started up, and is ready for use.
 	 * @param mp the newly started process.
 	 */
-	public void notifyProcessReady(MaximaProcess mp, long startupTime) {
+	void notifyProcessReady(MaximaProcess mp, long startupTime) {
 		startupTimeHistory.add(startupTime);
 		pool.add(mp);
 		startupThrotle.release();
 	}
 
 	/**
-	 * @return Map<String, String> a hash map containing lots of data about
+	 * @return Map<String, String> a hash map containing data about
 	 * the current state of the pool.
 	 */
-	protected Map<String, String> getStatus() {
+	Map<String, String> getStatus() {
 
 		Map<String, String> status = new LinkedHashMap<String, String>();
 
 		status.put("Ready processes in the pool", "" + pool.size());
 		status.put("Processes in use", "" + usedPool.size());
-		status.put("Current demand estimate", demandEstimate * 1000.0 + " Hz");
-		status.put("Current startuptime", startupTimeEstimate + " ms");
-		status.put("Active threads", "" + Thread.activeCount());
-		status.put("Maxima command-line", config.cmdLine);
-		if (config.load != null) {
-			try {
-				status.put("File to load", config.load.getCanonicalPath());
-			} catch (IOException e) {
-			}
-		}
-		status.put("Started test string", config.loadReady);
-		status.put("Loaded test string", config.useReady);
-		status.put("File handling", config.fileHandling ? "On" : "Off");
-		status.put("File paths template", config.pathCommandTemplate);
 		status.put("Min pool size", "" + poolMin);
 		status.put("Max pool size", "" + poolMax);
+		status.put("Current demand estimate", demandEstimate * 1000.0 + " Hz");
+		status.put("Current startuptime", startupTimeEstimate + " ms");
 		status.put("Pool update cycle time", updateCycle + " ms");
 		status.put("Number of data points for averages", "" + averageCount);
 		status.put("Pool size safety multiplier", "" + safetyMultiplier);
-		status.put("Execution extra time limit", config.executionTime + " ms");
-		status.put("Process life time limit", config.lifeTime + " ms");
 
 		return status;
 	}

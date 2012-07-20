@@ -12,6 +12,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.Writer;
 import java.util.Calendar;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Semaphore;
@@ -22,6 +23,9 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+
+import utils.ReaderSucker;
+import utils.StringUtils;
 
 
 /**
@@ -89,7 +93,7 @@ public class MaximaServlet extends HttpServlet {
 	 * @throws ServletException
 	 * @throws IOException
 	 */
-	public void doHealthcheckLowLevel(HttpServletRequest request,
+	private void doHealthcheckLowLevel(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
 
 		PrintWriter out = healthcheckStartOutput(response);
@@ -157,7 +161,7 @@ public class MaximaServlet extends HttpServlet {
 	 * @param response
 	 * @throws IOException
 	 */
-	protected void healthcheckSendCommand(String command, OutputStreamWriter input, PrintWriter out)
+	private void healthcheckSendCommand(String command, OutputStreamWriter input, PrintWriter out)
 			throws IOException {
 		out.write("<p>Sending command:</p><pre class=\"command\">" + command + "</pre>");
 		try {
@@ -225,7 +229,7 @@ public class MaximaServlet extends HttpServlet {
 	 * @throws ServletException
 	 * @throws IOException
 	 */
-	public void doHealthcheckHighLevel(HttpServletRequest request,
+	private void doHealthcheckHighLevel(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
 
 		Writer out = healthcheckStartOutput(response);
@@ -253,7 +257,7 @@ public class MaximaServlet extends HttpServlet {
 	 * @param response
 	 * @throws IOException
 	 */
-	protected PrintWriter healthcheckStartOutput(HttpServletResponse response) throws IOException {
+	private PrintWriter healthcheckStartOutput(HttpServletResponse response) throws IOException {
 		response.setStatus(HttpServletResponse.SC_OK);
 		response.setContentType("text/html");
 
@@ -273,6 +277,25 @@ public class MaximaServlet extends HttpServlet {
 		return out;
 	}
 
+	private Map<String, String> getSystemPerformance() {
+		Map<String, String> values = new LinkedHashMap<String, String>();
+
+		Runtime rt = Runtime.getRuntime();
+
+		Calendar startTime = Calendar.getInstance();
+		startTime.setTimeInMillis(servletStartTime);
+		long uptime = System.currentTimeMillis() - servletStartTime;
+
+		values.put("Servlet started", StringUtils.formatTimestamp(startTime.getTime()));
+		values.put("Up time", StringUtils.formatDuration(uptime));
+		values.put("Free memory", StringUtils.formatBytes(rt.freeMemory())
+				+ " out of " + StringUtils.formatBytes(rt.totalMemory()) + " total memory (" +
+				StringUtils.formatBytes(rt.maxMemory()) + " max limit).");
+		values.put("Active threads", "" + Thread.activeCount());
+
+		return values;
+	}
+
 	/**
 	 * Display the current status of the servlet, with a form that can be used
 	 * for testing.
@@ -281,15 +304,8 @@ public class MaximaServlet extends HttpServlet {
 	 * @throws ServletException
 	 * @throws IOException
 	 */
-	protected void doStatus(HttpServletRequest request,
+	private void doStatus(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
-
-		Runtime rt = Runtime.getRuntime();
-
-		Calendar startTime = Calendar.getInstance();
-		startTime.setTimeInMillis(servletStartTime);
-		long uptime = System.currentTimeMillis() - servletStartTime;
-		Map<String, String> status = maximaPool.getStatus();
 
 		response.setStatus(HttpServletResponse.SC_OK);
 		response.setContentType("text/html");
@@ -298,22 +314,11 @@ public class MaximaServlet extends HttpServlet {
 
 		out.write("<html><head><title>MaximaPool - status display</title></head><body>");
 
-		out.write("<h3>Current performance</h3>");
-		out.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
-		out.write("<tr><td>Servlet started:</td><td>" + StringUtils.formatTimestamp(startTime.getTime())
-				+ " (" + StringUtils.formatDuration(uptime) + " ago)</td></tr>");
-		out.write("<tr><td>Free memory:</td><td>" + StringUtils.formatBytes(rt.freeMemory())
-				+ " out of " + StringUtils.formatBytes(rt.totalMemory()) + " total memory (" +
-				StringUtils.formatBytes(rt.maxMemory()) + " max limit)."
-				+ "</td></tr>");
-		for (Map.Entry<String, String> entry : status.entrySet()) {
-			out.write("<tr><td>" + entry.getKey() + ":</td><td>" +
-					entry.getValue() + "</td></tr>");
-			if ("Active threads".equals(entry.getKey())) {
-				break;
-			}
-		}
-		out.write("</tbody></table>");
+		out.write("<h3>Current pool performance</h3>");
+		outputMapAsTable(out, maximaPool.getStatus());
+
+		out.write("<h3>Current system performance</h3>");
+		outputMapAsTable(out, getSystemPerformance());
 
 		out.write("<h3>Health-check</h3>");
 		out.write("<p><A href=\"?healthcheck=1\">Run the low-level health-check</a></p>");
@@ -321,23 +326,21 @@ public class MaximaServlet extends HttpServlet {
 
 		out.write("<h3>Test form</h3>");
 		out.write("<p>Input something for evaluation</p>");
-		out.write("<form method='POST'><textarea name='input'></textarea><br/>Timeout (ms): <select name='timeout'><option value='1000'>1000</option><option value='2000'>2000</option><option value='3000' selected='selected'>3000</option><option value='4000'>4000</option><option value='5000'>5000</option></select><br/><input type='submit' value='Eval'/></form>");
+		out.write("<form method='post'><textarea name='input'></textarea><br/>Timeout (ms): <select name='timeout'><option value='1000'>1000</option><option value='2000'>2000</option><option value='3000' selected='selected'>3000</option><option value='4000'>4000</option><option value='5000'>5000</option></select><br/><input type='submit' value='Eval'/></form>");
 
-		out.write("<h3>Configuration</h3>");
-		out.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
-		boolean output = false;
-		for (Map.Entry<String, String> entry : status.entrySet()) {
-			if (output) {
-				out.write("<tr><td>" + entry.getKey() + ":</td><td>" +
-						entry.getValue() + "</td></tr>");
-			}
-			if ("Active threads".equals(entry.getKey())) {
-				output = true;
-			}
-		}
-		out.write("</tbody></table>");
+		out.write("<h3>Maxima process configuration</h3>");
+		outputMapAsTable(out, processConfig.describe());
 
 		out.write("</body></html>");
+	}
+
+	private void outputMapAsTable(Writer out, Map<String, String> values) throws IOException {
+		out.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
+		for (Map.Entry<String, String> entry : values.entrySet()) {
+			out.write("<tr><td>" + entry.getKey() + ":</td><td>" +
+					entry.getValue() + "</td></tr>");
+		}
+		out.write("</tbody></table>");
 	}
 
 	/**

@@ -14,6 +14,9 @@ import java.util.concurrent.Semaphore;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import utils.FileUtils;
+import utils.ReaderSucker;
+
 class MaximaProcess {
 
 	private MaximaProcessConfig config;
@@ -256,7 +259,7 @@ class MaximaProcess {
 	 * @return the output of executing the command, up to, but not including
 	 * killString.
 	 */
-	public String getOutput() {
+	String getOutput() {
 		String out = output.currentValue();
 		if (out.indexOf("\"" + config.killString) > 0) {
 			return out.substring(0, out.indexOf("\"" + config.killString));
@@ -270,7 +273,7 @@ class MaximaProcess {
 	/**
 	 * If the process is not already finished, kill it.
 	 */
-	public void close() {
+	void close() {
 		try {
 			process.exitValue();
 		} catch (Exception e) {
@@ -282,11 +285,11 @@ class MaximaProcess {
 	 * @param testTime the time to consider as now. Typically System.currentTimeMillis().
 	 * @return whether testTime is after the liveTill time.
 	 */
-	public boolean isOverdue(long testTime) {
+	boolean isOverdue(long testTime) {
 		return liveTill < testTime;
 	}
 
-	public void addGeneratedFilesToZip(ZipOutputStream zos) throws IOException {
+	void addGeneratedFilesToZip(ZipOutputStream zos) throws IOException {
 		byte[] buffy = new byte[4096];
 
 		for (File f : filesGenerated()) {
