@@ -21,7 +21,7 @@ import java.util.concurrent.Semaphore;
  */
 public class MaximaPool implements UpkeepThread.Maintainable {
 
-	ProcessBuilder processBuilder = new ProcessBuilder();
+	private ProcessBuilder processBuilder;
 
 	private long updateCycle = 500;
 	private long startupTimeEstimate = 2000;
@@ -33,7 +33,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 	// that the processes die though some other means.
 
 	// The pool for ready processes
-	BlockingDeque<MaximaProcess> pool = new LinkedBlockingDeque<MaximaProcess>();
+	private BlockingDeque<MaximaProcess> pool = new LinkedBlockingDeque<MaximaProcess>();
 
 	// The pool of processes in use
 	private List<MaximaProcess> usedPool = Collections
@@ -43,12 +43,12 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 	private int poolMax = 100;
 	private MaximaProcessConfig config;
 
-	List<Long> startupTimeHistory = Collections
+	private List<Long> startupTimeHistory = Collections
 			.synchronizedList(new LinkedList<Long>());
 	private List<Long> requestTimeHistory = Collections
 			.synchronizedList(new LinkedList<Long>());
 
-	volatile Semaphore startupThrotle;
+	private volatile Semaphore startupThrotle;
 
 	private UpkeepThread upKeep;
 
@@ -78,6 +78,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		requestTimeHistory.add(System.currentTimeMillis());
 
 		// Set up the processBuilder
+		processBuilder = new ProcessBuilder();
 		processBuilder.command(config.cmdLine.split(" "));
 		processBuilder.directory(config.cwd);
 		processBuilder.redirectErrorStream(true);
@@ -234,6 +235,10 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		return N;
 	}
 
+	MaximaProcess makeProcess() {
+		return new MaximaProcess(processBuilder, config);
+	}
+
 	void startProcess() {
 		startCount++;
 		String threadName = Thread.currentThread().getName() + "-starter-" + startCount;
@@ -242,7 +247,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 			public void run() {
 				notifyStartingProcess();
 				long startTime = System.currentTimeMillis();
-				MaximaProcess mp = new MaximaProcess(processBuilder, config);
+				MaximaProcess mp = makeProcess();
 				notifyProcessReady(mp, System.currentTimeMillis() - startTime);
 			}
 		};

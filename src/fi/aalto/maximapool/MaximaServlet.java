@@ -101,8 +101,12 @@ public class MaximaServlet extends HttpServlet {
 
 		Process process = null;
 		long startTime = System.currentTimeMillis();
+		ProcessBuilder processBuilder = new ProcessBuilder();
+		processBuilder.command(processConfig.cmdLine.split(" "));
+		processBuilder.directory(processConfig.cwd);
+		processBuilder.redirectErrorStream(true);
 		try {
-			process = maximaPool.processBuilder.start();
+			process = processBuilder.start();
 		} catch (IOException e) {
 			healthcheckPrintException(out, e, "Exception when starting the process");
 			return;
@@ -227,7 +231,7 @@ public class MaximaServlet extends HttpServlet {
 		Writer out = healthcheckStartOutput(response);
 
 		long startTime = System.currentTimeMillis();
-		MaximaProcess mp = new MaximaProcess(maximaPool.processBuilder, processConfig);
+		MaximaProcess mp = maximaPool.makeProcess();
 		String firstOutput = mp.getOutput();
 		out.write("<pre>" + firstOutput + "</pre>");
 		out.flush();
