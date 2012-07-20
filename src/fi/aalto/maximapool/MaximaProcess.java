@@ -26,7 +26,7 @@ class MaximaProcess {
 	long liveTill;
 
 	OutputStreamWriter input = null;
-	InputStreamReaderSucker output = null;
+	ReaderSucker output = null;
 
 	Semaphore runSwitch = new Semaphore(1);
 
@@ -47,7 +47,7 @@ class MaximaProcess {
 			return;
 		}
 
-		output = new InputStreamReaderSucker(new BufferedReader(
+		output = new ReaderSucker(new BufferedReader(
 				new InputStreamReader(new BufferedInputStream(process
 						.getInputStream()))), runSwitch);
 		input = new OutputStreamWriter(new BufferedOutputStream(process
@@ -188,8 +188,9 @@ class MaximaProcess {
 				return true;
 			}
 
-			if (processDone)
-				readDone = output.foundEnd;
+			if (processDone) {
+				readDone = output.isAtEnd();
+			}
 
 			if (limit < System.currentTimeMillis()) {
 				output.close();
@@ -206,7 +207,6 @@ class MaximaProcess {
 				try {
 					Thread.sleep(0, 100);
 				} catch (InterruptedException e) {
-					e.printStackTrace();
 				}
 		}
 		output.close();

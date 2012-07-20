@@ -102,7 +102,7 @@ public class MaximaServlet extends HttpServlet {
 
 		Semaphore runSwitch = new Semaphore(1);
 
-		InputStreamReaderSucker output = new InputStreamReaderSucker(new BufferedReader(
+		ReaderSucker output = new ReaderSucker(new BufferedReader(
 				new InputStreamReader(new BufferedInputStream(
 						process.getInputStream()))), runSwitch);
 		OutputStreamWriter input = new OutputStreamWriter(new BufferedOutputStream(
@@ -167,7 +167,7 @@ public class MaximaServlet extends HttpServlet {
 	 * @throws IOException
 	 */
 	private String healthcheckWaitForOutput(String test,
-			InputStreamReaderSucker output, String previousOutput, PrintWriter out, long startupTime)
+			ReaderSucker output, String previousOutput, PrintWriter out, long startupTime)
 			throws IOException {
 
 		out.write("<p>Waiting for target text: <b>" + test + "</b></p>");

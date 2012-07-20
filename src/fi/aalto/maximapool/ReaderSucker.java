@@ -5,33 +5,36 @@ import java.io.Reader;
 import java.util.concurrent.Semaphore;
 
 /**
- * A utility for fast reading of STDOUT & STDERR...
+ * This utility accumulates all the input so far from a reader into a
+ * StringBuffer so that it can easily be accessed.
  *
  * @author Matti Harjula
  */
-class InputStreamReaderSucker {
+public class ReaderSucker {
 
-	/** All the ouptut from the reader is accumulated here. */
-	StringBuffer value = new StringBuffer();
+	/** All the input from the reader is accumulated here. */
+	private StringBuffer value = new StringBuffer();
 
 	/** The reader we are reading from. */
-	Reader reader = null;
+	private Reader reader;
 
 	/** Records when the end of the input is detected. */
-	volatile boolean foundEnd = false;
+	private volatile boolean foundEnd = false;
 
-	Semaphore runSwitch;
+	/** We only read from the reader when we have a token from this Semaphore. */
+	private Semaphore runSwitch;
 
 	/**
 	 * @param source the Reader to read from.
 	 * @param runSwitch the run switch to use.
 	 */
-	InputStreamReaderSucker(Reader source, Semaphore runSwitch) {
+	public ReaderSucker(Reader source, Semaphore runSwitch) {
 		reader = source;
 		this.runSwitch = runSwitch;
 		start();
 	}
 
+	/** Start the worker thread. */
 	private void start() {
 		Thread worker = new Thread() {
 			public void run() {
@@ -80,7 +83,7 @@ class InputStreamReaderSucker {
 	/**
 	 * Cleanup method.
 	 */
-	void close() {
+	public void close() {
 		foundEnd = true;
 		try {
 			reader.close();
@@ -91,7 +94,14 @@ class InputStreamReaderSucker {
 	/**
 	 * @return all the output so far.
 	 */
-	String currentValue() {
+	public String currentValue() {
 		return value.toString();
+	}
+
+	/**
+	 * @return Whether we have got to the end of the input.
+	 */
+	public boolean isAtEnd() {
+		return foundEnd;
 	}
 }
