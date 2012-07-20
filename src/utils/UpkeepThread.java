@@ -1,4 +1,4 @@
-package fi.aalto.maximapool;
+package utils;
 
 
 /**
