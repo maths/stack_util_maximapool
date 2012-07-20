@@ -11,7 +11,6 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.Writer;
-import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Map;
 import java.util.Properties;
@@ -36,10 +35,6 @@ import javax.servlet.http.HttpServletResponse;
 public class MaximaServlet extends HttpServlet {
 
 	private static final long serialVersionUID = -8604075780786871066L;
-
-	private static final long MINUTE = 60*1000;
-	private static final long HOUR = 60*MINUTE;
-	private static final long DAY = 24*HOUR;
 
 	/** The process pool we are using. */
 	private MaximaPool maximaPool;
@@ -270,18 +265,9 @@ public class MaximaServlet extends HttpServlet {
 
 		Runtime rt = Runtime.getRuntime();
 
-		Calendar c = Calendar.getInstance();
-		c.setTimeInMillis(servletStartTime);
+		Calendar startTime = Calendar.getInstance();
+		startTime.setTimeInMillis(servletStartTime);
 		long uptime = System.currentTimeMillis() - servletStartTime;
-		String upSinceTime = (new SimpleDateFormat("HH:mm")).format(c.getTime());
-		String upSinceDate = (new SimpleDateFormat("yyyy-MM-dd")).format(c.getTime());
-
-		long uptimeDays = uptime / DAY;
-		long uptimeHours = (uptime - uptimeDays * DAY) / HOUR;
-		c.set(Calendar.HOUR_OF_DAY, (int)uptimeHours);
-		long uptimeMinutes = (uptime - uptimeDays * DAY - uptimeHours * HOUR) / MINUTE;
-		c.set(Calendar.MINUTE, (int)uptimeMinutes);
-
 		Map<String, String> status = maximaPool.getStatus();
 
 		response.setStatus(HttpServletResponse.SC_OK);
@@ -293,9 +279,8 @@ public class MaximaServlet extends HttpServlet {
 
 		out.write("<h3>Current performance</h3>");
 		out.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
-		out.write("<tr><td>Servlet started:</td><td>" + upSinceTime + " " + upSinceDate
-				+ " (" + uptimeDays + " days, " + uptimeHours + " hours, " + uptimeMinutes
-				+ " minutes ago)</td></tr>");
+		out.write("<tr><td>Servlet started:</td><td>" + StringUtils.formatTimestamp(startTime.getTime())
+				+ " (" + StringUtils.formatDuration(uptime) + " ago)</td></tr>");
 		out.write("<tr><td>Free memory:</td><td>" + StringUtils.formatBytes(rt.freeMemory())
 				+ " out of " + StringUtils.formatBytes(rt.totalMemory()) + " total memory (" +
 				StringUtils.formatBytes(rt.maxMemory()) + " max limit)."

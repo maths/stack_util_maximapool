@@ -18,9 +18,15 @@ package fi.aalto.maximapool;
 
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 /** Utilities related to strings and string formatting */
 public class StringUtils {
+	private static final long MINUTE = 60*1000;
+	private static final long HOUR = 60*MINUTE;
+	private static final long DAY = 24*HOUR;
+
 	/**
 	 * @param iBytes Number of bytes
 	 * @return String containing size and unit in sensible units
@@ -67,5 +73,42 @@ public class StringUtils {
 	 */
 	public static String formatOneDecimal(double dNumber) {
 		return ONEDP.format(dNumber);
+	}
+
+	/**
+	 * @param date a specific date and time.
+	 * @return that time, nicely formatted for output.
+	 */
+	public static String formatTimestamp(Date date) {
+		return (new SimpleDateFormat("HH:mm yyyy-MM-dd")).format(date);
+	}
+
+	/**
+	 * @param durationMillis a length of time in milliseconds.
+	 * @return a nicely formatted string representation of that duration.
+	 */
+	public static String formatDuration(long durationMillis) {
+		long[] intervals = new long[] {MINUTE, HOUR, DAY};
+		String[] words = new String[] {" minute", " hour", " day"};
+
+		StringBuffer result = new StringBuffer(100);
+		boolean started = false;
+		for (int i = intervals.length - 1; i >= 0; i--) {
+			long num = durationMillis / intervals[i];
+			if (num > 0) {
+				if (started) {
+					result.append(", ");
+				}
+				result.append(num);
+				result.append(' ');
+				result.append(words[i]);
+				if (num > 1) {
+					result.append('s');
+				}
+				started = true;
+			}
+		}
+
+		return result.toString();
 	}
 }
