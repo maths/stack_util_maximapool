@@ -117,6 +117,8 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 
 		Map<String, String> status = new LinkedHashMap<String, String>();
 
+		status.put("Processes starting up", "" +
+				(poolConfig.startupLimit - startupThrotle.availablePermits()));
 		status.put("Ready processes in the pool", "" + pool.size());
 		status.put("Processes in use", "" + usedPool.size());
 		status.put("Current demand estimate", demandEstimate * 1000.0 + " Hz");
