@@ -13,45 +13,45 @@ class MaximaPoolConfig {
 	 * Lower limit to the number of processes we keep in the pool, irrespective
 	 * of the demand estimate
 	 */
-	public int poolMin = 5;
+	int poolMin = 5;
 
 	/**
 	 * Upper limit to the number of processes we keep in the pool, irrespective
 	 * of the demand estimate
 	 */
-	public int poolMax = 100;
+	int poolMax = 100;
 
 	/**
 	 * Maximum number of processes we allow to be in the process of starting at
 	 * any one time.
 	 */
-	public int startupLimit = 100;
+	int startupLimit = 100;
 
 	/**
 	 * Delay (ms) between runs of the maintenance tasks.
 	 */
-	public long updateCycle = 500;
+	long updateCycle = 500;
 
 	/**
 	 * Initial estimate for the start-up time (ms) for a process.
 	 */
-	public long startupTimeInitialEstimate = 2000;
+	long startupTimeInitialEstimate = 2000;
 
 	/**
 	 * Initial estimate for the frequency (Hz) with which a process is required.
 	 */
-	public double demandInitialEstimate = 0.001;
+	double demandInitialEstimate = 0.001;
 
 	/**
 	 * Number of data values to use in the rolling averages.
 	 */
-	public int averageCount = 5;
+	int averageCount = 5;
 
 	/**
 	 * If we estimate, based on the current load, that we need N processes
 	 * in the pool, we actually keep 3*N (providing this is less than poolMax).
 	 */
-	public double safetyMultiplier = 3.0;
+	double safetyMultiplier = 3.0;
 
 	/**
 	 * Update the configuration using any values in a set of properties.

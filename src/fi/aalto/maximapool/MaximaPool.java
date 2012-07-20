@@ -154,7 +154,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 	 * Start a process asynchronously, and add it to the pool when done.
 	 * @return the new process.
 	 */
-	void startProcess() {
+	private void startProcess() {
 		startCount++;
 		String threadName = Thread.currentThread().getName() + "-starter-" + startCount;
 		Thread starter = new Thread(threadName) {
@@ -164,6 +164,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 				long startTime = System.currentTimeMillis();
 				MaximaProcess mp = makeProcess();
 				startupTimeHistory.add(System.currentTimeMillis() - startTime);
+				mp.deactivate();
 				pool.add(mp);
 				startupThrotle.release();
 			}
@@ -176,7 +177,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 	 * it should be at.
 	 * @param numProcessesRequired
 	 */
-	void startProcesses(double numProcessesRequired) {
+	private void startProcesses(double numProcessesRequired) {
 		double numProcesses = pool.size() +
 				poolConfig.startupLimit - startupThrotle.availablePermits();
 
@@ -205,7 +206,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 	/**
 	 * Maintenance task that detects stale processes that should be killed.
 	 */
-	void killOverdueProcesses() {
+	private void killOverdueProcesses() {
 		long testTime = System.currentTimeMillis();
 
 		// Kill off old ones
@@ -235,7 +236,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 	/**
 	 * Maintenance task that updates the estimates that are used to manaage the pool.
 	 */
-	double updateEstimates(long sleep) {
+	private double updateEstimates(long sleep) {
 		// Prune datasets
 		while (startupTimeHistory.size() > poolConfig.averageCount) {
 			startupTimeHistory.remove(0);
