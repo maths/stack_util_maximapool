@@ -22,7 +22,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 /** Utilities related to strings and string formatting */
-public class StringUtils {
+public abstract class StringUtils {
 	private static final long MINUTE = 60*1000;
 	private static final long HOUR = 60*MINUTE;
 	private static final long DAY = 24*HOUR;

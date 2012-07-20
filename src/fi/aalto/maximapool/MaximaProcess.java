@@ -4,29 +4,30 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.Semaphore;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 class MaximaProcess {
 
 	private MaximaProcessConfig config;
 
-	Process process = null;
+	private Process process = null;
 
-	File baseDir = null;
+	private File baseDir = null;
 
-	boolean ready = false;
-	long startupTime = -1;
-	long liveTill;
+	private long liveTill;
 
-	OutputStreamWriter input = null;
-	ReaderSucker output = null;
+	private OutputStreamWriter input = null;
+	private ReaderSucker output = null;
 
-	Semaphore runSwitch = new Semaphore(1);
+	private Semaphore runSwitch = new Semaphore(1);
 
 	/**
 	 * This constructor blocks till it is ready so create in a thread...
@@ -34,8 +35,7 @@ class MaximaProcess {
 	MaximaProcess(ProcessBuilder processBuilder, MaximaProcessConfig config) {
 		this.config = config;
 
-		startupTime = System.currentTimeMillis();
-		liveTill = System.currentTimeMillis() + config.lifeTime;
+		liveTill = System.currentTimeMillis() + config.startupTime;
 
 		try {
 			process = processBuilder.start();
@@ -59,10 +59,9 @@ class MaximaProcess {
 
 		waitForOutput(test);
 		if (config.load == null) {
-			ready = true;
 			if (config.fileHandling)
 				setupFiles();
-			startupTime = System.currentTimeMillis() - startupTime;
+			liveTill = System.currentTimeMillis() + config.lifeTime;
 			return;
 		}
 
@@ -79,10 +78,10 @@ class MaximaProcess {
 
 		waitForOutput(config.useReady);
 
-		ready = true;
-		if (config.fileHandling)
+		if (config.fileHandling) {
 			setupFiles();
-		startupTime = System.currentTimeMillis() - startupTime;
+		}
+		liveTill = System.currentTimeMillis() + config.lifeTime;
 	}
 
 	private void waitForOutput(String test) {
@@ -92,8 +91,8 @@ class MaximaProcess {
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
-			if (System.currentTimeMillis() > startupTime + config.startupTime) {
-				throw new RuntimeException("Process start timeout");
+			if (System.currentTimeMillis() > liveTill) {
+				throw new RuntimeException("Process timed out.");
 			}
 		}
 	}
@@ -127,6 +126,7 @@ class MaximaProcess {
 	}
 
 	void activate() {
+		liveTill += config.executionTime;
 		runSwitch.release(1);
 	}
 
@@ -264,6 +264,44 @@ class MaximaProcess {
 			return out.substring(0, out.indexOf(config.killString));
 		} else {
 			return out;
+		}
+	}
+
+	/**
+	 * If the process is not already finished, kill it.
+	 */
+	public void close() {
+		try {
+			process.exitValue();
+		} catch (Exception e) {
+			kill();
+		}
+	}
+
+	/**
+	 * @param testTime the time to consider as now. Typically System.currentTimeMillis().
+	 * @return whether testTime is after the liveTill time.
+	 */
+	public boolean isOverdue(long testTime) {
+		return liveTill < testTime;
+	}
+
+	public void addGeneratedFilesToZip(ZipOutputStream zos) throws IOException {
+		byte[] buffy = new byte[4096];
+
+		for (File f : filesGenerated()) {
+			String name = f.getCanonicalPath().replace(
+					new File(baseDir, "output").getCanonicalPath(), "");
+			ZipEntry z = new ZipEntry(name);
+			zos.putNextEntry(z);
+			FileInputStream fis = new FileInputStream(f);
+			int c = fis.read(buffy);
+			while (c > 0) {
+				zos.write(buffy, 0, c);
+				c = fis.read(buffy);
+			}
+			fis.close();
+			zos.closeEntry();
 		}
 	}
 }

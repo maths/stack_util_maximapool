@@ -4,7 +4,6 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -191,7 +190,7 @@ public class MaximaServlet extends HttpServlet {
 				healthcheckPrintException(out, e, "Exception while waiting for output.");
 			}
 
-			if (System.currentTimeMillis() > startupTime + 10000) {
+			if (System.currentTimeMillis() > startupTime + processConfig.startupTime) {
 				out.write("<p>Timeout!</p>");
 				out.flush();
 				throw new RuntimeException("Timeout");
@@ -229,7 +228,7 @@ public class MaximaServlet extends HttpServlet {
 
 		long startTime = System.currentTimeMillis();
 		MaximaProcess mp = new MaximaProcess(maximaPool.processBuilder, processConfig);
-		String firstOutput = mp.output.currentValue();
+		String firstOutput = mp.getOutput();
 		out.write("<pre>" + firstOutput + "</pre>");
 		out.flush();
 
@@ -237,7 +236,7 @@ public class MaximaServlet extends HttpServlet {
 		out.flush();
 
 		mp.doAndDie("1+1;\n", 10000);
-		String secondOutput = mp.output.currentValue();
+		String secondOutput = mp.getOutput();
 		out.write("<pre>" + secondOutput.substring(firstOutput.length()) + "</pre>");
 		out.flush();
 
@@ -397,30 +396,15 @@ public class MaximaServlet extends HttpServlet {
 
 		if (mp.filesGenerated().size() > 0) {
 			response.setContentType("application/zip");
-			ZipOutputStream zos = new ZipOutputStream(response
-					.getOutputStream());
+			ZipOutputStream zos = new ZipOutputStream(response.getOutputStream());
 
-			byte[] buffy = new byte[4096];
-			int c = -1;
 			ZipEntry z = new ZipEntry("OUTPUT");
 			zos.putNextEntry(z);
 			zos.write(out.getBytes());
 			zos.closeEntry();
-			for (File f : mp.filesGenerated()) {
-				String name = f.getCanonicalPath().replace(
-						new File(mp.baseDir, "output").getCanonicalPath(), "");
-				z = new ZipEntry(name);
-				zos.putNextEntry(z);
-				FileInputStream fis = new FileInputStream(f);
-				c = fis.read(buffy);
-				while (c > 0) {
-					zos.write(buffy, 0, c);
-					c = fis.read(buffy);
-				}
-				fis.close();
-				zos.closeEntry();
-			}
+			mp.addGeneratedFilesToZip(zos);
 			zos.finish();
+
 		} else {
 			response.setContentType("text/plain");
 			response.getWriter().write(out);

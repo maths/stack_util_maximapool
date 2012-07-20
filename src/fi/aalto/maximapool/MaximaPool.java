@@ -103,8 +103,8 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 	 * Tells the pool that a process has started up, and is ready for use.
 	 * @param mp the newly started process.
 	 */
-	public void notifyProcessReady(MaximaProcess mp) {
-		startupTimeHistory.add(mp.startupTime);
+	public void notifyProcessReady(MaximaProcess mp, long startupTime) {
+		startupTimeHistory.add(startupTime);
 		pool.add(mp);
 		startupThrotle.release();
 	}
@@ -168,7 +168,6 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 				}
 			}
 		}
-		mp.liveTill += config.executionTime;
 		usedPool.add(mp);
 		mp.activate();
 
@@ -189,7 +188,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		} catch (InterruptedException e1) {
 			mp = null;
 		}
-		while (mp != null && mp.liveTill < testTime) {
+		while (mp != null && mp.isOverdue(testTime)) {
 			mp.kill();
 			try {
 				mp = pool.take();
@@ -197,17 +196,12 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 				mp = null;
 			}
 		}
-		if (mp != null)
+		if (mp != null) {
 			pool.addFirst(mp);
+		}
 
-		while (usedPool.size() > 0
-				&& usedPool.get(0).liveTill < testTime) {
-			mp = usedPool.remove(0);
-			try {
-				mp.process.exitValue();
-			} catch (Exception e) {
-				mp.kill();
-			}
+		while (usedPool.size() > 0 && usedPool.get(0).isOverdue(testTime)) {
+			usedPool.remove(0).close();
 		}
 	}
 
@@ -247,8 +241,9 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 			@Override
 			public void run() {
 				notifyStartingProcess();
+				long startTime = System.currentTimeMillis();
 				MaximaProcess mp = new MaximaProcess(processBuilder, config);
-				notifyProcessReady(mp);
+				notifyProcessReady(mp, System.currentTimeMillis() - startTime);
 			}
 		};
 		starter.start();
