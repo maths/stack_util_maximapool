@@ -249,7 +249,6 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		try {
 			upKeep.stopRunning();
 		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
 		}
 
 		// Kill all running processes.
@@ -257,6 +256,12 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 			mp.kill();
 		}
 		pool.clear();
+
+		// Kill all used processes.
+		for (MaximaProcess mp : usedPool) {
+			mp.kill();
+		}
+		usedPool.clear();
 	}
 
 	@Override

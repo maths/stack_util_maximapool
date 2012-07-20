@@ -17,19 +17,28 @@ import java.util.zip.ZipOutputStream;
 import utils.FileUtils;
 import utils.ReaderSucker;
 
+/** A single maxima process. */
 class MaximaProcess {
 
+	/** The configuration that determines how the process should be. */
 	private MaximaProcessConfig config;
 
+	/** The actual operating system process. */
 	private Process process = null;
 
+	/** If we are handling files, the top level folder where the files go. */
 	private File baseDir = null;
 
+	/** Expiry time. If this time passes, the process is forcibly killed. */
 	private long liveTill;
 
+	/** Connected to the STD input of the process. */
 	private OutputStreamWriter input = null;
+
+	/** Connected to the STD output of the process. */
 	private ReaderSucker output = null;
 
+	/** Semaphore for whether the process is active. Used to control the ReaderSucker. */
 	private Semaphore runSwitch = new Semaphore(1);
 
 	/**
@@ -87,6 +96,11 @@ class MaximaProcess {
 		liveTill = System.currentTimeMillis() + config.lifeTime;
 	}
 
+	/**
+	 * Helper method. Waits until a particular string is detected in the output,
+	 * before returning.
+	 * @param test string to look for in the output.
+	 */
 	private void waitForOutput(String test) {
 		while (output.currentValue().indexOf(test) < 0) {
 			try {
@@ -128,26 +142,34 @@ class MaximaProcess {
 		}
 	}
 
+	/**
+	 * Activate the process. This is called when the process is taken out of the
+	 * pool and is about to be used.
+	 */
 	void activate() {
 		liveTill += config.executionTime;
 		runSwitch.release(1);
 	}
 
+	/**
+	 * Deactivate the process. This is called once the processes has started up
+	 * and is ready to recieve input, and so is about to be added to the waiting
+	 * list of ready processes in the pool.
+	 */
 	void deactivate() {
 		try {
 			runSwitch.acquire();
 		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 	}
 
 	/**
-	 * Returns true if we did not timeout...
+	 * Actually process a command.
 	 *
-	 * @param command
+	 * @param command the command to execute.
 	 * @param timeout limit in ms
-	 * @return
+	 * @return true if we did not timeout.
 	 */
 	boolean doAndDie(String command, long timeout) {
 		String killStringGen = "concat(\""
@@ -159,12 +181,11 @@ class MaximaProcess {
 			input.write(command + killStringGen + "quit();\n");
 			input.close();
 		} catch (IOException e1) {
-			// TODO Auto-generated catch block
 			e1.printStackTrace();
 		}
 
 		// Basic limit for catching hanged or too long runs
-		long limit = timeout + System.currentTimeMillis();
+		liveTill = timeout + System.currentTimeMillis();
 
 		// Give it some time before checking for closure
 		try {
@@ -193,7 +214,7 @@ class MaximaProcess {
 				readDone = output.isAtEnd();
 			}
 
-			if (limit < System.currentTimeMillis()) {
+			if (liveTill < System.currentTimeMillis()) {
 				output.close();
 				kill();
 				return false;
@@ -215,6 +236,9 @@ class MaximaProcess {
 		return true;
 	}
 
+	/**
+	 * Forcibly end this process.
+	 */
 	void kill() {
 		runSwitch.release();
 		output.close();
@@ -256,8 +280,7 @@ class MaximaProcess {
 	}
 
 	/**
-	 * @return the output of executing the command, up to, but not including
-	 * killString.
+	 * @return the output of executing the command, up to, but not including killString.
 	 */
 	String getOutput() {
 		String out = output.currentValue();

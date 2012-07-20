@@ -348,10 +348,6 @@ public class MaximaServlet extends HttpServlet {
 		out.write("</tbody></table>");
 	}
 
-	/**
-	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse
-	 *      response)
-	 */
 	@Override
 	protected void doGet(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
@@ -377,10 +373,6 @@ public class MaximaServlet extends HttpServlet {
 		}
 	}
 
-	/**
-	 * @see HttpServlet#doPost(HttpServletRequest request, HttpServletResponse
-	 *      response)
-	 */
 	@Override
 	protected void doPost(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
@@ -421,5 +413,7 @@ public class MaximaServlet extends HttpServlet {
 			response.setContentType("text/plain");
 			response.getWriter().write(out);
 		}
+
+		maximaPool.notifyProcessFinishedWith(mp);
 	}
 }
