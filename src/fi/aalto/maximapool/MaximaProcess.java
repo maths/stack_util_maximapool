@@ -14,8 +14,9 @@ import java.util.concurrent.Semaphore;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-import utils.FileUtils;
-import utils.ReaderSucker;
+import fi.aalto.utils.FileUtils;
+import fi.aalto.utils.ReaderSucker;
+
 
 /** A single maxima process. */
 class MaximaProcess {

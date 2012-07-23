@@ -1,4 +1,4 @@
-package utils;
+package fi.aalto.utils;
 
 import java.io.IOException;
 import java.io.Reader;

@@ -12,7 +12,8 @@ import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.Semaphore;
 
-import utils.UpkeepThread;
+import fi.aalto.utils.UpkeepThread;
+
 
 /**
  * <p>

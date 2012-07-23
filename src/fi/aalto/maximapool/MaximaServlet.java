@@ -24,8 +24,9 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import utils.ReaderSucker;
-import utils.StringUtils;
+import fi.aalto.utils.ReaderSucker;
+import fi.aalto.utils.StringUtils;
+
 
 
 /**
