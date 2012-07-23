@@ -214,25 +214,16 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		long testTime = System.currentTimeMillis();
 
 		// Kill off old ones
-		MaximaProcess mp = null;
-		try {
-			mp = pool.take();
-		} catch (InterruptedException e1) {
-			mp = null;
-		}
+		MaximaProcess mp = pool.poll();
 		while (mp != null && mp.isOverdue(testTime)) {
 			mp.kill();
-			try {
-				mp = pool.take();
-			} catch (InterruptedException e) {
-				mp = null;
-			}
+			mp = pool.poll();
 		}
 		if (mp != null) {
 			pool.addFirst(mp);
 		}
 
-		while (usedPool.size() > 0 && usedPool.get(0).isOverdue(testTime)) {
+		while (!usedPool.isEmpty() && usedPool.get(0).isOverdue(testTime)) {
 			usedPool.remove(0).close();
 		}
 	}
