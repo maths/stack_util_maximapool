@@ -47,7 +47,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 	private double demandEstimate = 0.001;
 
 	/** Used to restrict the number of processes starting up at any one time. */
-	private volatile Semaphore startupThrotle;
+	private volatile Semaphore startupThrottle;
 
 	// These should probably be volatile, but then you would need to make sure
 	// that the processes die though some other means.
@@ -87,7 +87,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		processBuilder.redirectErrorStream(true);
 
 		// Create the startup throttle.
-		this.startupThrotle = new Semaphore(poolConfig.startupLimit);
+		this.startupThrottle = new Semaphore(poolConfig.startupLimit);
 
 		// Start the upkeep thread.
 		upKeep = new UpkeepThread(this, poolConfig.updateCycle);
@@ -121,7 +121,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		requestTimeHistory.add(System.currentTimeMillis());
 
 		// Start a new one as we are going to take one...
-		if (startupThrotle.availablePermits() > 0) {
+		if (startupThrottle.availablePermits() > 0) {
 			startProcess();
 		}
 
@@ -165,14 +165,14 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 			@Override
 			public void run() {
 				try {
-					startupThrotle.acquireUninterruptibly();
+					startupThrottle.acquireUninterruptibly();
 					long startTime = System.currentTimeMillis();
 					MaximaProcess mp = makeProcess();
 					startupTimeHistory.add(System.currentTimeMillis() - startTime);
 					mp.deactivate();
 					pool.add(mp);
 				} finally {
-					startupThrotle.release();
+					startupThrottle.release();
 				}
 			}
 		};
@@ -186,10 +186,10 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 	 */
 	private void startProcesses(double numProcessesRequired) {
 		double numProcesses = pool.size() +
-				poolConfig.startupLimit - startupThrotle.availablePermits();
+				poolConfig.startupLimit - startupThrottle.availablePermits();
 
 		while (numProcesses < numProcessesRequired
-				&& startupThrotle.availablePermits() > 0) {
+				&& startupThrottle.availablePermits() > 0) {
 			numProcesses += 1.0;
 			startProcess();
 		}
@@ -268,7 +268,7 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		Map<String, String> status = new LinkedHashMap<String, String>();
 
 		status.put("Processes starting up", "" +
-				(poolConfig.startupLimit - startupThrotle.availablePermits()));
+				(poolConfig.startupLimit - startupThrottle.availablePermits()));
 		status.put("Ready processes in the pool", "" + pool.size());
 		status.put("Processes in use", "" + usedPool.size());
 		status.put("Total number of processes started", "" + startCount);
