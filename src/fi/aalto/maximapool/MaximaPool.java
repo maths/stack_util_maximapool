@@ -164,13 +164,16 @@ public class MaximaPool implements UpkeepThread.Maintainable {
 		Thread starter = new Thread(threadName) {
 			@Override
 			public void run() {
-				startupThrotle.acquireUninterruptibly();
-				long startTime = System.currentTimeMillis();
-				MaximaProcess mp = makeProcess();
-				startupTimeHistory.add(System.currentTimeMillis() - startTime);
-				mp.deactivate();
-				pool.add(mp);
-				startupThrotle.release();
+				try {
+					startupThrotle.acquireUninterruptibly();
+					long startTime = System.currentTimeMillis();
+					MaximaProcess mp = makeProcess();
+					startupTimeHistory.add(System.currentTimeMillis() - startTime);
+					mp.deactivate();
+					pool.add(mp);
+				} finally {
+					startupThrotle.release();
+				}
 			}
 		};
 		starter.start();
