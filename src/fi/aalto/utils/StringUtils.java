@@ -29,28 +29,28 @@ public abstract class StringUtils {
 	private static final long DAY = 24*HOUR;
 
 	/**
-	 * @param iBytes Number of bytes
+	 * @param bytes Number of bytes
 	 * @return String containing size and unit in sensible units
 	 */
-	public static String formatBytes(int iBytes) {
-		if (iBytes < 1024) {
-			return iBytes + " bytes";
+	public static String formatBytes(long bytes) {
+		if (bytes < 1024L) {
+			return bytes + " bytes";
 		}
-		if (iBytes < 1024*1024) {
-			return formatOneDecimal(iBytes, 1024) + " KB";
+		if (bytes < 1024L*1024L) {
+			return formatOneDecimal(bytes, 1024L) + " KB";
 		}
-		if (iBytes < 1024*1024*1024) {
-			return formatOneDecimal(iBytes, 1024*1024) + " MB";
+		if (bytes < 1024L*1024L*1024L) {
+			return formatOneDecimal(bytes, 1024L*1024L) + " MB";
 		}
-		return formatOneDecimal(iBytes, 1024*1024*1024) + " GB";
+		return formatOneDecimal(bytes, 1024L*1024L*1024L) + " GB";
 	}
 
 	/**
-	 * @param lBytes Number of bytes
+	 * @param bytes Number of bytes
 	 * @return String containing size and unit in sensible units
 	 */
-	public static String formatBytes(long lBytes) {
-		return formatBytes((int) lBytes);
+	public static String formatBytes(int bytes) {
+		return formatBytes((long) bytes);
 	}
 
 	/** Format used for numbers to one DP. */
@@ -62,6 +62,18 @@ public abstract class StringUtils {
 	 * @return a string that is iNumber/iDivisor to one DP.
 	 */
 	public static String formatOneDecimal(int iNumber, int iDivisor) {
+		if (iDivisor == 0) {
+			return "??";
+		}
+		return formatOneDecimal(iNumber / (double) iDivisor);
+	}
+
+	/**
+	 * @param iNumber
+	 * @param iDivisor
+	 * @return a string that is iNumber/iDivisor to one DP.
+	 */
+	public static String formatOneDecimal(long iNumber, long iDivisor) {
 		if (iDivisor == 0) {
 			return "??";
 		}

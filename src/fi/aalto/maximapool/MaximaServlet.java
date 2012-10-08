@@ -11,6 +11,8 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.lang.management.ManagementFactory;
+import java.lang.management.OperatingSystemMXBean;
 import java.util.Calendar;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -289,12 +291,27 @@ public class MaximaServlet extends HttpServlet {
 		startTime.setTimeInMillis(servletStartTime);
 		long uptime = System.currentTimeMillis() - servletStartTime;
 
+		OperatingSystemMXBean osInfo = ManagementFactory.getOperatingSystemMXBean();
+
 		values.put("Servlet started", StringUtils.formatTimestamp(startTime.getTime()));
 		values.put("Up time", StringUtils.formatDuration(uptime));
-		values.put("Free memory", StringUtils.formatBytes(rt.freeMemory())
-				+ " out of " + StringUtils.formatBytes(rt.totalMemory()) + " total memory (" +
-				StringUtils.formatBytes(rt.maxMemory()) + " max limit).");
 		values.put("Active threads", "" + Thread.activeCount());
+		values.put("Java free memory", StringUtils.formatBytes(rt.freeMemory())
+				+ " out of " + StringUtils.formatBytes(rt.totalMemory()) + " total memory (" +
+				StringUtils.formatBytes(rt.maxMemory()) + " max limit)");
+		values.put("System load", osInfo.getSystemLoadAverage() + " over " + osInfo.getAvailableProcessors() + " processors");
+
+		try {
+			// Sadly, this nasty use of reflection seems to be the only way to get
+			// system memory usage in Java.
+			Object freeMemory = osInfo.getClass().getMethod("getFreePhysicalMemorySize").invoke(osInfo);
+			Object totalMemory = osInfo.getClass().getMethod("getTotalPhysicalMemory").invoke(osInfo);
+			values.put("System free memory", StringUtils.formatBytes(((Long) freeMemory).longValue())
+					+ " out of " + StringUtils.formatBytes(((Long) totalMemory).longValue()));
+
+		} catch (Exception e) {
+			// Not possible to get memory usage on this system.
+		}
 
 		return values;
 	}
