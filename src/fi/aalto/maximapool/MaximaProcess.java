@@ -72,8 +72,6 @@ class MaximaProcess {
 
 		waitForOutput(test);
 		if (config.load == null) {
-			if (config.fileHandling)
-				setupFiles();
 			liveTill = System.currentTimeMillis() + config.lifeTime;
 			return;
 		}
@@ -91,9 +89,6 @@ class MaximaProcess {
 
 		waitForOutput(config.useReady);
 
-		if (config.fileHandling) {
-			setupFiles();
-		}
 		liveTill = System.currentTimeMillis() + config.lifeTime;
 	}
 
@@ -127,9 +122,15 @@ class MaximaProcess {
 	 *
 	 * @param command the command to execute.
 	 * @param timeout limit in ms
+	 * @param base URL that plot images will be served from.
 	 * @return true if we did not timeout.
 	 */
-	boolean doAndDie(String command, long timeout) {
+	boolean doAndDie(String command, long timeout, String plotUrlBase) {
+
+		if (config.fileHandling) {
+			setupFiles(plotUrlBase);
+		}
+
 		String killStringGen = "concat(\""
 				+ config.killString.substring(0, config.killString.length() / 2)
 				+ "\",\"" + config.killString.substring(config.killString.length() / 2)
@@ -285,7 +286,7 @@ class MaximaProcess {
 	 * Set up file handling. This creates the directory, and sends a command
 	 * to Maxima giving the path.
 	 */
-	private void setupFiles() {
+	private void setupFiles(String plotUrlBase) {
 		try {
 			baseDir = File.createTempFile("mp-", "-" + process.hashCode());
 			baseDir.delete();
@@ -296,14 +297,15 @@ class MaximaProcess {
 			work.mkdir();
 
 			String command = config.pathCommandTemplate;
-			command = command.replaceAll("%OUTPUT-DIR-NE%", output
-					.getCanonicalPath());
-			command = command.replaceAll("%WORK-DIR-NE%", work
-					.getCanonicalPath());
-			command = command.replaceAll("%OUTPUT-DIR%", output
-					.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\"));
-			command = command.replaceAll("%WORK-DIR%", work
-					.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\"));
+			command = command.replaceAll("%OUTPUT-DIR-NE%",
+					output.getCanonicalPath());
+			command = command.replaceAll("%WORK-DIR-NE%",
+					work.getCanonicalPath());
+			command = command.replaceAll("%OUTPUT-DIR%",
+					output.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\"));
+			command = command.replaceAll("%WORK-DIR%",
+					work.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\"));
+			command = command.replaceAll("%PLOT-URL-BASE%", plotUrlBase);
 			input.write(command);
 			input.flush();
 		} catch (IOException e) {
