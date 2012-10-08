@@ -246,7 +246,7 @@ public class MaximaServlet extends HttpServlet {
 		out.write("<p>Sending command: <b>1+1;</b>.</p>");
 		out.flush();
 
-		mp.doAndDie("1+1;\n", 10000);
+		mp.doAndDie("1+1;\n", 10000, "");
 		String secondOutput = mp.getOutput();
 		out.write("<pre>" + secondOutput.substring(firstOutput.length()) + "</pre>");
 		out.flush();
@@ -384,14 +384,20 @@ public class MaximaServlet extends HttpServlet {
 		MaximaProcess mp = maximaPool.getProcess();
 
 		long limit = 3000;
-		if (request.getParameter("timeout") != null)
+		if (request.getParameter("timeout") != null) {
 			try {
 				limit = Long.parseLong(request.getParameter("timeout"));
 			} catch (NumberFormatException e) {
 				e.printStackTrace();
 			}
+		}
 
-		if (mp.doAndDie(theInput, limit)) {
+		String plotUrlBase = request.getParameter("ploturlbase");
+		if (plotUrlBase == null) {
+			plotUrlBase = "";
+		}
+
+		if (mp.doAndDie(theInput, limit, plotUrlBase)) {
 			response.setStatus(HttpServletResponse.SC_OK);
 		} else {
 			response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR );
