@@ -74,6 +74,6 @@ otherwise you may just get old values from cache instead of new ones from the se
 ## License
 
 MaximaPool is Licensed under whatever license
-[moodle-qtype_stack](https://github.com/sangwinc/moodle-qtype_stack/) is
+[moodle-qtype_stack](https://github.com/maths/moodle-qtype_stack/) is
 licensed. Currently, GNU General Public, License Version 3.
 
