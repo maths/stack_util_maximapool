@@ -9,12 +9,12 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.io.Writer;
 import java.lang.management.ManagementFactory;
 import java.lang.management.OperatingSystemMXBean;
 import java.util.Calendar;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Semaphore;
@@ -26,34 +26,41 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import fi.aalto.utils.HtmlUtils;
 import fi.aalto.utils.ReaderSucker;
 import fi.aalto.utils.StringUtils;
 
 
 
 /**
- * <p>
- * A simple servlet keeping maxima processes running and executing posted
- * commands in them.
- * </p>
+ * This servlet provides the public interface to the Maxima pools, and the
+ * processes in them.
  *
- * @author Matti Harjula
+ * @author Matti Harjula, Tim Hunt
  */
 public class MaximaServlet extends HttpServlet {
-
 	private static final long serialVersionUID = -8604075780786871066L;
 
-	/** The configuration for the pool. */
-	private MaximaProcessConfig processConfig = new MaximaProcessConfig();
+	/**
+	 * Timeput period used by the low-level healthcheck.
+	 */
+	private final static long HEALTHCHECK_TIMEOUT = 10000;
 
-	/** The configuration for the processes we create. */
-	private MaximaPoolConfig poolConfig = new MaximaPoolConfig();
+	/**
+	 * Manages the different pools of processes running the different version
+	 * of the Maxima code.
+	 */
+	private PoolCoordinator poolCoordinator;
 
-	/** The process pool we are using. */
-	private MaximaPool maximaPool;
-
-	/** Records when the servlet started. */
+	/**
+	 * Records when the servlet started. (System.currentTimeMillis();)
+	 */
 	private long servletStartTime;
+
+	/**
+	 * The admin password. Must be typed in when doing any 'dangerous' operations.
+	 */
+	private String adminPassword;
 
 	@Override
 	public void init() throws ServletException {
@@ -61,63 +68,342 @@ public class MaximaServlet extends HttpServlet {
 
 		servletStartTime = System.currentTimeMillis();
 
+		// Load properties.
+		Properties properties = new Properties();
 		try {
-			// Load properties.
-			Properties properties = new Properties();
 			properties.load(Thread.currentThread().getContextClassLoader()
-					.getResourceAsStream("maximapool.conf"));
-
-			File extraConfig = new File(properties.getProperty("extra.config", "false"));
-			if (!"false".equals(extraConfig.getName()) && extraConfig.isFile()) {
-				FileReader reader = new FileReader(extraConfig);
-				properties.load(reader);
-				reader.close();
-			}
-
-			processConfig.loadProperties(properties);
-			poolConfig.loadProperties(properties);
-
-		} catch (IOException e) {
-			e.printStackTrace();
+					.getResourceAsStream("servlet.conf"));
+		} catch (IOException ioe) {
+			throw new ServletException("Cannot load servlet.conf.", ioe);
 		}
 
-		maximaPool = new MaximaPool(poolConfig, processConfig);
+		adminPassword = properties.getProperty("admin.password");
+		if (adminPassword == null) {
+			throw new ServletException("Admin password not set.");
+		}
+
+		File directoryRoot = new File(properties.getProperty("directory.root", ""));
+		if (!directoryRoot.isDirectory()) {
+			throw new ServletException("Configured directory.root (" +
+					directoryRoot.getPath() + ") does not exist.");
+		}
+
+		PoolConfiguration poolConfiguration = new PoolConfiguration();
+		poolConfiguration.directoryRoot = directoryRoot;
+
+		File poolConf = new File(directoryRoot, "pool.conf");
+		if (!poolConf.isFile()) {
+			throw new ServletException("Configuation file " +
+					poolConf.getPath() + " does not exist.");
+		}
+
+		try {
+			FileReader reader = new FileReader(poolConf);
+			properties.load(reader);
+			reader.close();
+		} catch (IOException ioe) {
+			throw new ServletException("Failed to load configuation file " +
+					poolConf.getPath(), ioe);
+		}
+
+		poolConfiguration.loadProperties(properties);
+		poolConfiguration.scanAvailableProcessConfigurations();
+		poolCoordinator = new PoolCoordinator(poolConfiguration);
+
+		for (Map.Entry<String, ProcessConfiguration> entry :
+				poolConfiguration.processConfigurations.entrySet()) {
+			if (entry.getValue().autoStart) {
+				poolCoordinator.startConfiguration(entry.getKey());
+			}
+		}
 	}
 
 	@Override
 	public void destroy() {
-		maximaPool.destroy();
+		poolCoordinator.destroy();
 		super.destroy();
+	}
+
+	@Override
+	protected void doGet(HttpServletRequest request,
+			HttpServletResponse response) throws ServletException, IOException {
+
+		try {
+			// Dispatch the request.
+			String healthcheck = request.getParameter("healthcheck");
+			if ("1".equals(healthcheck)) {
+				doHealthcheckLowLevel(request, response);
+
+			} else if ("2".equals(healthcheck)) {
+				doHealthcheckHighLevel(request, response);
+
+			} else {
+				doStatus(request, response);
+			}
+
+		} catch (Exception e) {
+			HtmlUtils.sendErrorPage(response, e);
+		}
+	}
+
+
+	@Override
+	protected void doPost(HttpServletRequest request, HttpServletResponse response)
+			throws ServletException, IOException {
+		try {
+			if (request.getParameter("input") != null) {
+				doProcess(request, response);
+				return;
+			}
+
+			if (checkAdminPassword(request)) {
+				if (request.getParameter("start") != null) {
+					doStartPool(request);
+				} else if (request.getParameter("stop") != null) {
+					doStopPool(request);
+				} else if (request.getParameter("scan") != null) {
+					doScanConfigurations(request);
+				}
+			}
+			response.sendRedirect("MaximaPool");
+
+		} catch (Exception e) {
+			HtmlUtils.sendErrorPage(response, e);
+		}
+	}
+
+	/**
+	 * Process a request that asks Maxima to calculate something.
+	 * @param request the request.
+	 * @param response the response to send.
+	 * @throws IOException
+	 */
+	private void doProcess(HttpServletRequest request, HttpServletResponse response) throws IOException {
+
+		String theInput = request.getParameter("input");
+		String configurationName = request.getParameter("version");
+		long timeLimit = getRequestLong(request,"timeout", 3000);
+		String plotUrlBase = getRequestString(request,"ploturlbase", "");
+
+		// NOTE! the obvious lack of input sanity checks... so think where you
+		// use this.
+		MaximaProcess maximaProcess = poolCoordinator.getProcess(configurationName);
+		if (maximaProcess.doAndDie(theInput, timeLimit, plotUrlBase)) {
+			response.setStatus(HttpServletResponse.SC_OK);
+		} else {
+			response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR );
+		}
+
+		String out = maximaProcess.getOutput();
+
+		if (maximaProcess.filesGenerated().size() > 0) {
+			response.setContentType("application/zip");
+			ZipOutputStream zos = new ZipOutputStream(response.getOutputStream());
+
+			ZipEntry z = new ZipEntry("OUTPUT");
+			zos.putNextEntry(z);
+			zos.write(out.getBytes());
+			zos.closeEntry();
+			maximaProcess.addGeneratedFilesToZip(zos);
+			zos.finish();
+
+		} else {
+			response.setContentType("text/plain");
+			response.getWriter().write(out);
+		}
+
+		poolCoordinator.notifyProcessFinishedWith(maximaProcess);
+	}
+
+	/**
+	 * Process a request to start a pool for a particular version of the Maxima code.
+	 * @param request the request.
+	 * @param response the response to send.
+	 * @throws IOException
+	 */
+	private void doStartPool(HttpServletRequest request) throws ServletException, IOException {
+
+		String configurationName = request.getParameter("start");
+		poolCoordinator.startConfiguration(configurationName);
+	}
+
+	/**
+	 * Process a request to stop the pool for a particular version of the Maxima code.
+	 * @param request the request.
+	 * @param response the response to send.
+	 * @throws IOException
+	 */
+	private void doStopPool(HttpServletRequest request) throws ServletException, IOException {
+
+		String configurationName = request.getParameter("stop");
+		poolCoordinator.stopConfiguration(configurationName);
+	}
+
+	/**
+	 * Process a request to stop the pool for a particular version of the Maxima code.
+	 * @param request the request.
+	 * @param response the response to send.
+	 * @throws IOException
+	 */
+	private void doScanConfigurations(HttpServletRequest request) throws ServletException, IOException {
+
+		poolCoordinator.scanConfigurations();
+	}
+
+	/**
+	 * Display the current status of the servlet, with a form that can be used
+	 * for testing, and with controls to manage which pools are running.
+	 * @param request the request.
+	 * @param response the response to send.
+	 * @throws ServletException
+	 * @throws IOException
+	 */
+	private void doStatus(HttpServletRequest request,
+			HttpServletResponse response) throws ServletException, IOException {
+
+		List<String> runningPools = poolCoordinator.getRunningConfigurations();
+		String[][] poolOptions = new String[runningPools.size()][2];
+		String[][] timoutOptions = new String[][] {
+				{"1000", "1 second"},
+				{"2000", "2 seconds"},
+				{"5000", "5 seconds"},
+				{"10000", "10 seconds"},
+				{"20000", "20 seconds"}};
+		int i = 0;
+		for (String configurationName : runningPools) {
+			poolOptions[i][0] = configurationName;
+			poolOptions[i][1] = configurationName;
+			i++;
+		}
+
+		response.setStatus(HttpServletResponse.SC_OK);
+		response.setContentType("text/html");
+
+		PrintWriter out = HtmlUtils.startOutput(response, "status display");
+
+		HtmlUtils.writeHeading(out, "System performance");
+		HtmlUtils.writeMapAsTable(out, getSystemPerformance());
+
+		HtmlUtils.writeHeading(out, "Overall pool performance");
+		HtmlUtils.writeMapAsTable(out, poolCoordinator.getStatus());
+
+		HtmlUtils.writeHeading(out, "Running versions");
+
+		for (String configurationName : runningPools) {
+			HtmlUtils.writeSubHeading(out, "Pool performance - " + configurationName);
+			HtmlUtils.writeMapAsTable(out, poolCoordinator.getPoolStatus(configurationName));
+
+			if (!poolCoordinator.isConfigurationCurrent(configurationName)) {
+				HtmlUtils.writeWarning(out, "The configuration has changed on disc since this pool was started. You should probably stop and then re-start this pool.");
+			}
+
+			HtmlUtils.writeLink(out, "?healthcheck=2&version=" + configurationName,
+					"Run the high-level health-check");
+			HtmlUtils.writeLink(out, "?healthcheck=1&version=" + configurationName,
+					"Run the low-level health-check");
+			HtmlUtils.writeActionButton(out, "stop", configurationName,
+					"Stop this pool");
+
+			HtmlUtils.writeSubHeading(out, "Pool configuration - " + configurationName);
+			HtmlUtils.writeMapAsTable(out, poolCoordinator.getProcessConfiguration(configurationName).describe());
+		}
+
+		HtmlUtils.writeHeading(out, "Test form");
+		HtmlUtils.writeFormStart(out);
+		HtmlUtils.writeTextarea(out, "Input something for evaluation. (It must end in a ';'.)", "input", "1+1;");
+		HtmlUtils.writeSelect(out, "Timeout", "timeout", timoutOptions);
+		HtmlUtils.writeSelect(out, "Pool", "version", poolOptions);
+		HtmlUtils.writeFormFinish(out, "Evaluate");
+
+		HtmlUtils.writeHeading(out, "Overall pool configuration");
+		HtmlUtils.writeMapAsTable(out, poolCoordinator.describeConfiguration());
+
+		HtmlUtils.writeHeading(out, "Non-running versions");
+		for (Map.Entry<String, ProcessConfiguration> entry :
+				poolCoordinator.getAvailablePoolConfigurations().entrySet()) {
+			String configurationName = entry.getKey();
+			if (runningPools.contains(configurationName)) {
+				continue;
+			}
+
+			HtmlUtils.writeSubHeading(out, "Stopped pool configuration - " + configurationName);
+			HtmlUtils.writeMapAsTable(out, entry.getValue().describe());
+			HtmlUtils.writeLink(out, "?healthcheck=1&version=" + configurationName,
+					"Run the low-level health-check");
+			HtmlUtils.writeActionButton(out, "start", configurationName,
+					"Start this pool");
+		}
+
+		HtmlUtils.writeHeading(out, "Check for new pool definitions");
+		HtmlUtils.writeActionButton(out, "scan", "", "Re-load pool definition");
+
+		HtmlUtils.finishOutput(out);
+	}
+
+	/**
+	 * This is a high-level healthcheck script which gets Maxima to do something,
+	 * using the MaximaProcess class, but it run's synchonously, rather than using
+	 * the pool.
+	 * @param request the request.
+	 * @param response the response to send.
+	 * @throws IOException
+	 * @throws ServletException
+	 */
+	private void doHealthcheckHighLevel(HttpServletRequest request,
+			HttpServletResponse response) throws ServletException, IOException {
+
+		Writer out = HtmlUtils.startOutput(response, "high-level health-check");
+
+		long startTime = System.currentTimeMillis();
+		MaximaProcess maximaProcess = poolCoordinator.makeProcess(request.getParameter("version"));
+		String firstOutput = maximaProcess.getOutput();
+		HtmlUtils.writePre(out, firstOutput);
+		out.flush();
+
+		HtmlUtils.writeParagraph(out, "Sending command: '1+1;'.");
+
+		maximaProcess.doAndDie("1+1;\n", 10000, "");
+		String secondOutput = maximaProcess.getOutput();
+		HtmlUtils.writePre(out, secondOutput.substring(firstOutput.length()));
+		out.flush();
+
+		HtmlUtils.writeParagraph(out, "Time taken: " + (System.currentTimeMillis() - startTime) + " ms");
+		HtmlUtils.finishOutput(out);
 	}
 
 	/**
 	 * Do a low-level healthcheck. This uses the very low-level commants to try
 	 * to get Maxima to do something, and outputs lots of details along the way.
-	 * @param request
-	 * @param response
+	 * @param request the request.
+	 * @param response the response to send.
 	 * @throws ServletException
 	 * @throws IOException
 	 */
 	private void doHealthcheckLowLevel(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
 
-		PrintWriter out = healthcheckStartOutput(response);
+		String version = request.getParameter("version");
+		ProcessConfiguration processConfig = poolCoordinator.getProcessConfiguration(version);
+		if (processConfig == null) {
+			throw new RuntimeException("Cannot do a low-level health-check of an unknown version.");
+		}
 
-		out.write("<p>Executing command-line: " + processConfig.cmdLine + "</p>");
-		out.flush();
+		PrintWriter out = HtmlUtils.startOutput(response, "low-level health-check");
+
+		HtmlUtils.writeParagraph(out, "Executing command-line: " + processConfig.commandLine);
 
 		String currentOutput = "";
 
 		Process process = null;
 		long startTime = System.currentTimeMillis();
 		ProcessBuilder processBuilder = new ProcessBuilder();
-		processBuilder.command(processConfig.cmdLine.split(" "));
-		processBuilder.directory(processConfig.cwd);
+		processBuilder.command(processConfig.commandLine.split(" "));
+		processBuilder.directory(processConfig.workingDirectory);
 		processBuilder.redirectErrorStream(true);
 		try {
 			process = processBuilder.start();
 		} catch (IOException e) {
-			healthcheckPrintException(out, e, "Exception when starting the process");
+			HtmlUtils.writeException(out, e, "Exception when starting the process");
 			return;
 		}
 
@@ -129,21 +415,21 @@ public class MaximaServlet extends HttpServlet {
 		OutputStreamWriter input = new OutputStreamWriter(new BufferedOutputStream(
 				process.getOutputStream()));
 
-		String test = processConfig.loadReady;
+		String test = processConfig.processHasStartedOutput;
 
-		if (processConfig.load == null) {
-			test = processConfig.useReady;
+		if (processConfig.extraFileToLoad == null) {
+			test = processConfig.processIsReadyOutput;
 		}
 
-		currentOutput = healthcheckWaitForOutput(test, output, currentOutput, out, startTime);
+		currentOutput = HtmlUtils.streamOutputUntil(out, output, test, currentOutput, startTime + HEALTHCHECK_TIMEOUT);
 
-		if (processConfig.load != null) {
-			String command = "load(\"" + processConfig.load.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\") + "\");\n";
+		if (processConfig.extraFileToLoad != null) {
+			String command = "load(\"" + processConfig.extraFileToLoad.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\") + "\");\n";
 			healthcheckSendCommand(command, input, out);
-			currentOutput = healthcheckWaitForOutput(processConfig.useReady, output, currentOutput, out, startTime);
+			currentOutput = HtmlUtils.streamOutputUntil(out, output, processConfig.processIsReadyOutput, currentOutput, startTime + HEALTHCHECK_TIMEOUT);
 		}
 
-		out.write("<p>Start-up time: " + (System.currentTimeMillis() - startTime) + " ms</p>");
+		HtmlUtils.writeParagraph(out, "Start-up time: " + (System.currentTimeMillis() - startTime) + " ms");
 
 		String killStringGen = "concat(\""
 				+ processConfig.killString.substring(0, processConfig.killString.length() / 2)
@@ -151,137 +437,38 @@ public class MaximaServlet extends HttpServlet {
 				+ "\");\n";
 
 		healthcheckSendCommand("1+1;\n" + killStringGen, input, out);
-		currentOutput = healthcheckWaitForOutput(processConfig.killString, output, currentOutput, out, startTime);
+		currentOutput = HtmlUtils.streamOutputUntil(out, output, processConfig.killString, currentOutput, startTime + HEALTHCHECK_TIMEOUT);
 
 		healthcheckSendCommand("quit();\n", input, out);
 		input.close();
 
-		out.write("<p>Total time: " + (System.currentTimeMillis() - startTime) + " ms</p>");
-
-		out.write("</body></html>");
+		HtmlUtils.writeParagraph(out, "Total time: " + (System.currentTimeMillis() - startTime) + " ms");
+		HtmlUtils.finishOutput(out);
 	}
 
 	/**
-	 * Helper method used by the healthcheck.
-	 * @param response
+	 * Helper method used by the low-level healthcheck.
+	 * @param command The comment to send to the processes standard input.
+	 * @param input The processes standard input.
+	 * @param out PrintWriter for the response we are sending.
 	 * @throws IOException
 	 */
 	private void healthcheckSendCommand(String command, OutputStreamWriter input, PrintWriter out)
 			throws IOException {
-		out.write("<p>Sending command:</p><pre class=\"command\">" + command + "</pre>");
+		HtmlUtils.writeParagraph(out, "Sending command:");
+		HtmlUtils.writeCommand(out, command);
 		try {
 			input.write(command);
 			input.flush();
 		} catch (IOException e) {
-			healthcheckPrintException(out, e, "Exception sending the command.");
+			HtmlUtils.writeException(out, e, "Exception sending the command.");
 		}
 	}
 
-	private void healthcheckPrintException(PrintWriter out, Exception e, String message) {
-		out.write("<p>" + message + "</p>");
-		out.write("<pre>");
-		e.printStackTrace(out);
-		out.write("</pre>");
-	}
-
 	/**
-	 * Helper method used by the healthcheck.
-	 * @param response
-	 * @throws IOException
+	 * Get various information about how the system we are running on is performing.
+	 * @return Hash map containg system performance information.
 	 */
-	private String healthcheckWaitForOutput(String test,
-			ReaderSucker output, String previousOutput, PrintWriter out, long startupTime)
-			throws IOException {
-
-		out.write("<p>Waiting for target text: <b>" + test + "</b></p>");
-		out.flush();
-
-		while (true) {
-			try {
-				Thread.sleep(0, 200);
-			} catch (InterruptedException e) {
-				healthcheckPrintException(out, e, "Exception while waiting for output.");
-			}
-
-			if (System.currentTimeMillis() > startupTime + processConfig.startupTime) {
-				out.write("<p>Timeout!</p>");
-				out.flush();
-				throw new RuntimeException("Timeout");
-			}
-
-			String currentOutput = output.currentValue();
-
-			if (!currentOutput.equals(previousOutput)) {
-				out.write("<pre>" + currentOutput.substring(previousOutput.length()) + "</pre>");
-				previousOutput = currentOutput;
-				out.flush();
-			}
-
-			if (previousOutput.indexOf(test) >= 0) {
-				break;
-			}
-		}
-
-		return previousOutput;
-	}
-
-	/**
-	 * This is a high-level healthcheck script which gets Maxima to do something,
-	 * using the MaximaProcess class, but it run's synchonously, rather than using
-	 * the pool.
-	 * @param request
-	 * @param response
-	 * @throws ServletException
-	 * @throws IOException
-	 */
-	private void doHealthcheckHighLevel(HttpServletRequest request,
-			HttpServletResponse response) throws ServletException, IOException {
-
-		Writer out = healthcheckStartOutput(response);
-
-		long startTime = System.currentTimeMillis();
-		MaximaProcess mp = maximaPool.makeProcess();
-		String firstOutput = mp.getOutput();
-		out.write("<pre>" + firstOutput + "</pre>");
-		out.flush();
-
-		out.write("<p>Sending command: <b>1+1;</b>.</p>");
-		out.flush();
-
-		mp.doAndDie("1+1;\n", 10000, "");
-		String secondOutput = mp.getOutput();
-		out.write("<pre>" + secondOutput.substring(firstOutput.length()) + "</pre>");
-		out.flush();
-
-		out.write("<p>Time taken: " + (System.currentTimeMillis() - startTime) + " ms</p>");
-		out.write("</body></html>");
-	}
-
-	/**
-	 * Helper method used by the healthcheck.
-	 * @param response
-	 * @throws IOException
-	 */
-	private PrintWriter healthcheckStartOutput(HttpServletResponse response) throws IOException {
-		response.setStatus(HttpServletResponse.SC_OK);
-		response.setContentType("text/html");
-
-		PrintWriter out = response.getWriter();
-
-		out.write("<html><head>" +
-				"<title>MaximaPool - health-check</title>" +
-				"<style type=\"text/css\">" +
-					"pre { padding: 0.5em; background: #eee; }" +
-					"pre.command { background: #dfd; }" +
-				"</style>" +
-				"</head><body>");
-
-		out.write("<p>Trying to start a Maxima process.</p>");
-		out.flush();
-
-		return out;
-	}
-
 	private Map<String, String> getSystemPerformance() {
 		Map<String, String> values = new LinkedHashMap<String, String>();
 
@@ -317,127 +504,47 @@ public class MaximaServlet extends HttpServlet {
 	}
 
 	/**
-	 * Display the current status of the servlet, with a form that can be used
-	 * for testing.
-	 * @param request
-	 * @param response
-	 * @throws ServletException
-	 * @throws IOException
+	 * Get an optional string parameter from the request.
+	 * @param request HTTP request.
+	 * @param name parameter name.
+	 * @param defaultValue default value to use if the property is not present.
+	 * @return the requested value.
 	 */
-	private void doStatus(HttpServletRequest request,
-			HttpServletResponse response) throws ServletException, IOException {
-
-		response.setStatus(HttpServletResponse.SC_OK);
-		response.setContentType("text/html");
-
-		Writer out = response.getWriter();
-
-		out.write("<html><head><title>MaximaPool - status display</title></head><body>");
-
-		out.write("<h3>Current pool performance</h3>");
-		outputMapAsTable(out, maximaPool.getStatus());
-
-		out.write("<h3>Current system performance</h3>");
-		outputMapAsTable(out, getSystemPerformance());
-
-		out.write("<h3>Health-check</h3>");
-		out.write("<p><A href=\"?healthcheck=1\">Run the low-level health-check</a></p>");
-		out.write("<p><A href=\"?healthcheck=2\">Run the high-level health-check</a></p>");
-
-		out.write("<h3>Test form</h3>");
-		out.write("<p>Input something for evaluation</p>");
-		out.write("<form method='post'><textarea name='input'></textarea><br/>Timeout (ms): <select name='timeout'><option value='1000'>1000</option><option value='2000'>2000</option><option value='3000' selected='selected'>3000</option><option value='4000'>4000</option><option value='5000'>5000</option></select><br/><input type='submit' value='Eval'/></form>");
-
-		out.write("<h3>Maxima pool configuration</h3>");
-		outputMapAsTable(out, poolConfig.describe());
-
-		out.write("<h3>Maxima process configuration</h3>");
-		outputMapAsTable(out, processConfig.describe());
-
-		out.write("</body></html>");
-	}
-
-	private void outputMapAsTable(Writer out, Map<String, String> values) throws IOException {
-		out.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
-		for (Map.Entry<String, String> entry : values.entrySet()) {
-			out.write("<tr><td>" + entry.getKey() + ":</td><td>" +
-					entry.getValue() + "</td></tr>");
+	private String getRequestString(HttpServletRequest request, String name, String defaultValue) {
+		String value = request.getParameter(name);
+		if (value == null) {
+			return defaultValue;
 		}
-		out.write("</tbody></table>");
+		return value;
 	}
 
-	@Override
-	protected void doGet(HttpServletRequest request,
-			HttpServletResponse response) throws ServletException, IOException {
+	/**
+	 * Get an optional long parameter from the request.
+	 * @param request HTTP request.
+	 * @param name parameter name.
+	 * @param defaultValue default value to use if the property is not present,
+	 * of if it cannot be parsed as a long.
+	 * @return the requested value.
+	 */
+	private long getRequestLong(HttpServletRequest request, String name, long defaultValue) {
+		String value = request.getParameter(name);
+		if (value == null) {
+			return defaultValue;
+		}
 
 		try {
-			// Dispatch the request.
-			if ("healthcheck=1".equals(request.getQueryString())) {
-				doHealthcheckLowLevel(request, response);
-
-			} else if ("healthcheck=2".equals(request.getQueryString())) {
-				doHealthcheckHighLevel(request, response);
-
-			} else {
-				doStatus(request, response);
-			}
-
-		} catch (Exception e) {
-			// Display any exceptions.
-			StringWriter sw = new StringWriter();
-			e.printStackTrace(new PrintWriter(sw));
-			response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
-					"<p>" + e.getMessage() + "</p><pre>" + sw.toString() + "</pre>");
+			return Long.parseLong(value);
+		} catch (NumberFormatException e) {
+			return defaultValue;
 		}
 	}
 
-	@Override
-	protected void doPost(HttpServletRequest request,
-			HttpServletResponse response) throws ServletException, IOException {
-		String theInput = request.getParameter("input");
-
-		// NOTE! the obvious lack of input sanity checks... so think where you
-		// use this.
-		MaximaProcess mp = maximaPool.getProcess();
-
-		long limit = 3000;
-		if (request.getParameter("timeout") != null) {
-			try {
-				limit = Long.parseLong(request.getParameter("timeout"));
-			} catch (NumberFormatException e) {
-				e.printStackTrace();
-			}
-		}
-
-		String plotUrlBase = request.getParameter("ploturlbase");
-		if (plotUrlBase == null) {
-			plotUrlBase = "";
-		}
-
-		if (mp.doAndDie(theInput, limit, plotUrlBase)) {
-			response.setStatus(HttpServletResponse.SC_OK);
-		} else {
-			response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR );
-		}
-
-		String out = mp.getOutput();
-
-		if (mp.filesGenerated().size() > 0) {
-			response.setContentType("application/zip");
-			ZipOutputStream zos = new ZipOutputStream(response.getOutputStream());
-
-			ZipEntry z = new ZipEntry("OUTPUT");
-			zos.putNextEntry(z);
-			zos.write(out.getBytes());
-			zos.closeEntry();
-			mp.addGeneratedFilesToZip(zos);
-			zos.finish();
-
-		} else {
-			response.setContentType("text/plain");
-			response.getWriter().write(out);
-		}
-
-		maximaPool.notifyProcessFinishedWith(mp);
+	/**
+	 * Check whether the request contains the right admin password.
+	 * @param request the request.
+	 * @return wether the request contains the right password.
+	 */
+	private boolean checkAdminPassword(HttpServletRequest request) {
+		return adminPassword.equals(request.getParameter("password"));
 	}
 }

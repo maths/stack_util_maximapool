@@ -18,37 +18,44 @@ import fi.aalto.utils.FileUtils;
 import fi.aalto.utils.ReaderSucker;
 
 
-/** A single maxima process. */
+/**
+ * A single maxima process.
+ * The class deals with the mechanicas of starting a process, putting it to
+ * sleep, waking it, feeding it input and collecing the output.
+ */
 class MaximaProcess {
 
 	/** The configuration that determines how the process should be. */
-	private MaximaProcessConfig config;
+	private ProcessConfiguration configuration;
 
 	/** The actual operating system process. */
 	private Process process = null;
 
 	/** If we are handling files, the top level folder where the files go. */
-	private File baseDir = null;
+	private File generatedFileDir = null;
 
 	/** Expiry time. If this time passes, the process is forcibly killed. */
-	private long liveTill;
+	private long liveUntil;
 
 	/** Connected to the STD input of the process. */
-	private OutputStreamWriter input = null;
+	private OutputStreamWriter processInput = null;
 
 	/** Connected to the STD output of the process. */
-	private ReaderSucker output = null;
+	private ReaderSucker processOutput = null;
 
-	/** Semaphore for whether the process is active. Used to control the ReaderSucker. */
+	/**
+	 * Semaphore for whether the process is active. Used to control the ReaderSucker
+	 * When we acquire the run switch, the ReaderSucker goes to sleep.
+	 */
 	private Semaphore runSwitch = new Semaphore(1);
 
 	/**
 	 * This constructor blocks till it is ready so create in a thread...
 	 */
-	MaximaProcess(ProcessBuilder processBuilder, MaximaProcessConfig config) {
-		this.config = config;
+	MaximaProcess(ProcessBuilder processBuilder, ProcessConfiguration config) {
+		configuration = config;
 
-		liveTill = System.currentTimeMillis() + config.startupTime;
+		liveUntil = System.currentTimeMillis() + config.startupTimeout;
 
 		try {
 			process = processBuilder.start();
@@ -58,38 +65,38 @@ class MaximaProcess {
 			return;
 		}
 
-		output = new ReaderSucker(new BufferedReader(
+		processOutput = new ReaderSucker(new BufferedReader(
 				new InputStreamReader(new BufferedInputStream(process
 						.getInputStream()))), runSwitch);
-		input = new OutputStreamWriter(new BufferedOutputStream(process
+		processInput = new OutputStreamWriter(new BufferedOutputStream(process
 				.getOutputStream()));
 
-		String test = config.loadReady;
+		String test = config.processHasStartedOutput;
 
-		if (config.load == null) {
-			test = config.useReady;
+		if (config.extraFileToLoad == null) {
+			test = config.processIsReadyOutput;
 		}
 
 		waitForOutput(test);
-		if (config.load == null) {
-			liveTill = System.currentTimeMillis() + config.lifeTime;
+		if (config.extraFileToLoad == null) {
+			liveUntil = System.currentTimeMillis() + config.maximumLifetime;
 			return;
 		}
 
 		try {
 			String command = "load(\""
-					+ config.load.getCanonicalPath()
+					+ config.extraFileToLoad.getCanonicalPath()
 							.replaceAll("\\\\", "\\\\\\\\") + "\");\n";
-			input.write(command);
+			processInput.write(command);
 
-			input.flush();
+			processInput.flush();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 
-		waitForOutput(config.useReady);
+		waitForOutput(config.processIsReadyOutput);
 
-		liveTill = System.currentTimeMillis() + config.lifeTime;
+		liveUntil = System.currentTimeMillis() + config.maximumLifetime;
 	}
 
 	/**
@@ -110,7 +117,7 @@ class MaximaProcess {
 	 * pool and is about to be used.
 	 */
 	void activate() {
-		liveTill += config.executionTime;
+		liveUntil += configuration.executionTimeout;
 		runSwitch.release(1);
 	}
 
@@ -127,24 +134,24 @@ class MaximaProcess {
 	 */
 	boolean doAndDie(String command, long timeout, String plotUrlBase) {
 
-		if (config.fileHandling) {
+		if (configuration.fileHandling) {
 			setupFiles(plotUrlBase);
 		}
 
 		String killStringGen = "concat(\""
-				+ config.killString.substring(0, config.killString.length() / 2)
-				+ "\",\"" + config.killString.substring(config.killString.length() / 2)
+				+ configuration.killString.substring(0, configuration.killString.length() / 2)
+				+ "\",\"" + configuration.killString.substring(configuration.killString.length() / 2)
 				+ "\");";
 
 		try {
-			input.write(command + killStringGen + "quit();\n");
-			input.close();
+			processInput.write(command + killStringGen + "quit();\n");
+			processInput.close();
 		} catch (IOException e1) {
 			e1.printStackTrace();
 		}
 
 		// Basic limit for catching hanged or too long runs
-		liveTill = timeout + System.currentTimeMillis();
+		liveUntil = timeout + System.currentTimeMillis();
 
 		// Give it some time before checking for closure
 		try {
@@ -163,34 +170,34 @@ class MaximaProcess {
 				} catch (Exception ee) {
 
 				}
-			if (output.currentValue().contains(config.killString)) {
-				output.close();
+			if (processOutput.currentValue().contains(configuration.killString)) {
+				processOutput.close();
 				kill();
 				return true;
 			}
 
 			if (processDone) {
-				readDone = output.isAtEnd();
+				readDone = processOutput.isAtEnd();
 			}
 
-			if (liveTill < System.currentTimeMillis()) {
-				output.close();
+			if (liveUntil < System.currentTimeMillis()) {
+				processOutput.close();
 				kill();
 				return false;
 			}
 
 			if (readDone) {
-				output.close();
+				processOutput.close();
 				return true;
 			}
-			// Read not done Not wait some more
-			if (!readDone)
-				try {
-					Thread.sleep(0, 100);
-				} catch (InterruptedException e) {
-				}
+
+			// Read not done. Wait some more.
+			try {
+				Thread.sleep(0, 100);
+			} catch (InterruptedException e) {
+			}
 		}
-		output.close();
+		processOutput.close();
 		deactivate();
 		return true;
 	}
@@ -201,13 +208,13 @@ class MaximaProcess {
 	 * @param test string to look for in the output.
 	 */
 	private void waitForOutput(String test) {
-		while (output.currentValue().indexOf(test) < 0) {
+		while (processOutput.currentValue().indexOf(test) < 0) {
 			try {
 				Thread.sleep(0, 200);
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
-			if (System.currentTimeMillis() > liveTill) {
+			if (System.currentTimeMillis() > liveUntil) {
 				throw new RuntimeException("Process timed out.");
 			}
 		}
@@ -217,11 +224,11 @@ class MaximaProcess {
 	 * @return the output of executing the command, up to, but not including killString.
 	 */
 	String getOutput() {
-		String out = output.currentValue();
-		if (out.indexOf("\"" + config.killString) > 0) {
-			return out.substring(0, out.indexOf("\"" + config.killString));
-		} else if (out.indexOf(config.killString) > 0) {
-			return out.substring(0, out.indexOf(config.killString));
+		String out = processOutput.currentValue();
+		if (out.indexOf("\"" + configuration.killString) > 0) {
+			return out.substring(0, out.indexOf("\"" + configuration.killString));
+		} else if (out.indexOf(configuration.killString) > 0) {
+			return out.substring(0, out.indexOf(configuration.killString));
 		} else {
 			return out;
 		}
@@ -232,7 +239,7 @@ class MaximaProcess {
 	 * @return whether testTime is after the liveTill time.
 	 */
 	boolean isOverdue(long testTime) {
-		return liveTill < testTime;
+		return liveUntil < testTime;
 	}
 
 	/**
@@ -251,7 +258,7 @@ class MaximaProcess {
 	 */
 	void kill() {
 		runSwitch.release();
-		output.close();
+		processOutput.close();
 		try {
 			process.exitValue();
 			return;
@@ -259,12 +266,12 @@ class MaximaProcess {
 			// Nope just testing if it was already down
 		}
 		try {
-			input.write("quit();\n\n");
-			input.close();
+			processInput.write("quit();\n\n");
+			processInput.close();
 		} catch (IOException e1) {
 		}
 
-		output.close();
+		processOutput.close();
 		try {
 			process.exitValue();
 		} catch (Exception e) {
@@ -275,8 +282,8 @@ class MaximaProcess {
 	@Override
 	protected void finalize() throws Throwable {
 		kill();
-		if (config.fileHandling) {
-			FileUtils.deleteDirectoryRecursive(baseDir);
+		if (configuration.fileHandling) {
+			FileUtils.deleteDirectoryRecursive(generatedFileDir);
 		}
 
 		super.finalize();
@@ -288,15 +295,15 @@ class MaximaProcess {
 	 */
 	private void setupFiles(String plotUrlBase) {
 		try {
-			baseDir = File.createTempFile("mp-", "-" + process.hashCode());
-			baseDir.delete();
-			baseDir.mkdirs();
-			File output = new File(baseDir, "output");
-			File work = new File(baseDir, "work");
+			generatedFileDir = File.createTempFile("mp-", "-" + process.hashCode());
+			generatedFileDir.delete();
+			generatedFileDir.mkdirs();
+			File output = new File(generatedFileDir, "output");
+			File work = new File(generatedFileDir, "work");
 			output.mkdir();
 			work.mkdir();
 
-			String command = config.pathCommandTemplate;
+			String command = configuration.pathCommandTemplate;
 			command = command.replaceAll("%OUTPUT-DIR-NE%",
 					output.getCanonicalPath());
 			command = command.replaceAll("%WORK-DIR-NE%",
@@ -306,8 +313,8 @@ class MaximaProcess {
 			command = command.replaceAll("%WORK-DIR%",
 					work.getCanonicalPath().replaceAll("\\\\", "\\\\\\\\"));
 			command = command.replaceAll("%PLOT-URL-BASE%", plotUrlBase);
-			input.write(command);
-			input.flush();
+			processInput.write(command);
+			processInput.flush();
 		} catch (IOException e) {
 			System.out.println("File handling failure, maybe the securitymanager has something against us?");
 			e.printStackTrace();
@@ -318,10 +325,10 @@ class MaximaProcess {
 	 * @return a list of the files generated while executing the command, if any.
 	 */
 	List<File> filesGenerated() {
-		if (!config.fileHandling) {
+		if (!configuration.fileHandling) {
 			return new LinkedList<File>();
 		}
-		return FileUtils.listFiles(new File(baseDir, "output"));
+		return FileUtils.listFiles(new File(generatedFileDir, "output"));
 	}
 
 	/**
@@ -334,7 +341,7 @@ class MaximaProcess {
 
 		for (File f : filesGenerated()) {
 			String name = f.getCanonicalPath().replace(
-					new File(baseDir, "output").getCanonicalPath(), "");
+					new File(generatedFileDir, "output").getCanonicalPath(), "");
 			ZipEntry z = new ZipEntry(name);
 			zos.putNextEntry(z);
 			FileInputStream fis = new FileInputStream(f);

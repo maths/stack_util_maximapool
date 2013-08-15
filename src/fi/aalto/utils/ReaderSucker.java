@@ -39,24 +39,23 @@ public class ReaderSucker {
 		String threadName = Thread.currentThread().getName().replace("-starter-", "-readersucker-");
 		Thread worker = new Thread(threadName) {
 			public void run() {
-				char[] buffy = new char[1024];
+				char[] buffer = new char[1024];
 				int i = 0;
 				while (!foundEnd) {
 					try {
 						runSwitch.acquire();
-					} catch (InterruptedException e1) {
-						e1.printStackTrace();
+					} catch (InterruptedException e) {
 					}
 					i = 0;
 					try {
 						if (reader.ready()) {
-							i = reader.read(buffy);
+							i = reader.read(buffer);
 						}
 					} catch (IOException e) {
 					}
 					runSwitch.release();
 					if (i > 0) {
-						value.append(new String(buffy, 0, i));
+						value.append(new String(buffer, 0, i));
 					} else if (i == -1) {
 						foundEnd = true;
 						break;

@@ -1,15 +1,15 @@
 <project name="MaximaPool" default="dist" basedir=".">
-    <description>
-       	MaximaPool.war creator
-    </description>
+	<description>
+		MaximaPool.war creator
+	</description>
 
-  <target name="dist">
-	<mkdir dir="build"/>
-	<copy file="maximapool.conf" tofile="build/maximapool.conf"/>
-	<javac srcdir="src" destdir="build" debug="on" target="1.6" classpath="lib/servlet-api.jar" includeAntRuntime="false"/>
-	<war destfile="MaximaPool.war" webxml="misc/web.xml" manifest="misc/MANIFEST.MF">
-		<classes dir="build"/>
-	</war>
-	<delete dir="build"/>
-  </target>
+ 	<target name="dist">
+		<mkdir dir="build"/>
+		<copy file="servlet.conf" tofile="build/servlet.conf"/>
+		<javac srcdir="src" destdir="build" debug="on" classpath="lib/servlet-api.jar" includeAntRuntime="false"/>
+		<war destfile="MaximaPool.war" webxml="misc/web.xml" manifest="misc/MANIFEST.MF">
+			<classes dir="build"/>
+		</war>
+		<delete dir="build"/>
+	</target>
 </project>

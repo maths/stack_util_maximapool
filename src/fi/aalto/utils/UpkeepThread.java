@@ -16,11 +16,12 @@ public class UpkeepThread extends Thread {
 	private volatile boolean stopNow = false;
 
 	/**
+	 * @param name a thread name.
 	 * @param thingToMaintain the object to maintain
 	 * @param sleepTime the time to wait between each call to doMaintenance in milliseconds.
 	 */
-	public UpkeepThread(Maintainable thingToMaintain, long sleepTime) {
-		super("MaximaPool-upkeep");
+	public UpkeepThread(String name, Maintainable thingToMaintain, long sleepTime) {
+		super(name);
 		setDaemon(true);
 		this.target = thingToMaintain;
 		sleep = sleepTime;

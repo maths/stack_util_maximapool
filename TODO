@@ -1,4 +1,0 @@
-The list of things to do:
-
-Low priority, as in maybe someone else handles these:
- - Encoding issues, the response should tell which encoding is used for the text and we would need to keep track on it when handling the processes.
