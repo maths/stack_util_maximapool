@@ -290,6 +290,7 @@ public class MaximaServlet extends HttpServlet {
 		HtmlUtils.writeHeading(out, "Running versions");
 
 		for (String configurationName : runningPools) {
+			HtmlUtils.writeDivStart(out, "pool", configurationName);
 			HtmlUtils.writeSubHeading(out, "Pool performance - " + configurationName);
 			HtmlUtils.writeMapAsTable(out, poolCoordinator.getPoolStatus(configurationName));
 
@@ -306,6 +307,7 @@ public class MaximaServlet extends HttpServlet {
 
 			HtmlUtils.writeSubHeading(out, "Pool configuration - " + configurationName);
 			HtmlUtils.writeMapAsTable(out, poolCoordinator.getProcessConfiguration(configurationName).describe());
+			HtmlUtils.writeDivEnd(out);
 		}
 
 		HtmlUtils.writeHeading(out, "Test form");
@@ -326,12 +328,14 @@ public class MaximaServlet extends HttpServlet {
 				continue;
 			}
 
+			HtmlUtils.writeDivStart(out, "pool", configurationName);
 			HtmlUtils.writeSubHeading(out, "Stopped pool configuration - " + configurationName);
 			HtmlUtils.writeMapAsTable(out, entry.getValue().describe());
 			HtmlUtils.writeLink(out, "?healthcheck=1&version=" + configurationName,
 					"Run the low-level health-check");
 			HtmlUtils.writeActionButton(out, "start", configurationName,
 					"Start this pool");
+			HtmlUtils.writeDivEnd(out);
 		}
 
 		HtmlUtils.writeHeading(out, "Check for new pool definitions");

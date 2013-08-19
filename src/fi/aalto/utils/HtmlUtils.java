@@ -53,12 +53,19 @@ public abstract class HtmlUtils {
 		out.write("<!DOCTYPE html><html><head>" +
 				"<title>MaximaPool - </title>" +
 				"<style type=\"text/css\">" +
+				"div.pool { margin: 1em 0; padding: 1em; box-shadow: inset 0 0 1em #aaa; border-radius: 0.7em; }" +
+				"table { margin: 0.5em 0; border-radius: 0.5em; }" +
+				"th, td { padding: 0 0.5em; text-align: left; }" +
+				"th { background: #ddd; }" +
+				"tr.even td { background: #ddd; }" +
+				"tr.odd td { background: #eee; }" +
 				"p { margin: 0 0 0.5em; }" +
 				"pre { padding: 0.5em; background: #eee; }" +
 				"pre.command { background: #dfd; }" +
 				".warning { color: #800; }" +
 				"h1 { margin: 1em 0 0.5em; font-size: 1.4em; }" +
 				"h2 { margin: 1em 0 0.5em; font-size: 1.2em; }" +
+				"h2:first-child { margin-top: 0; }" +
 				"</style>" +
 				"</head><body>");
 		return out;
@@ -73,6 +80,26 @@ public abstract class HtmlUtils {
 		out.write("</body></html>");
 		out.close();
 	}	
+
+	/**
+	 * Write a start div tag with a given class name.
+	 * @param out Writer to write to.
+	 * @param className the class attribute value.
+	 * @param id an id to add to the HTML.
+	 * @throws IOException
+	 */
+	public static void writeDivStart(Writer out, String className, String id) throws IOException {
+		out.write("<div class=\"" + escape(className) + "\" id=\"" + escape(id) + "\">");
+	}
+
+	/**
+	 * Write a close div tag.
+	 * @param out Writer to write to.
+	 * @throws IOException
+	 */
+	public static void writeDivEnd(Writer out) throws IOException {
+		out.write("</div>");
+	}
 
 	/**
 	 * Write a string surrounded by h1 tags.
@@ -158,9 +185,11 @@ public abstract class HtmlUtils {
 	 */
 	public static void writeMapAsTable(Writer out, Map<String, String> values) throws IOException {
 		out.write("<table><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>");
+		boolean even = false;
 		for (Map.Entry<String, String> entry : values.entrySet()) {
-			out.write("<tr><td>" + escape(entry.getKey()) + ":</td><td>" +
+			out.write("<tr class=\"" + (even ? "even" : "odd") + "\"><td>" + escape(entry.getKey()) + ":</td><td>" +
 					escape(entry.getValue()) + "</td></tr>");
+			even = !even;
 		}
 		out.write("</tbody></table>");
 	}
