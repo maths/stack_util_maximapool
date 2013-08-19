@@ -1,0 +1,47 @@
+Maxima Pool test script
+
+1. Set up the file structure with at least two versions of the stack maxima code,
+one set to auto-run and the other not.
+
+2. Copy MaximaPool.war to the server, so that the servlet restarts.
+
+3. As the servelet restarts, watch the status page and check that
+   a. The auto-run versions start auomatically.
+   b. The non-auto-run versions do not start.
+   c. The number of processes in each pool rises to an appropriate level.
+
+4. Run the low-level and high-level health-check for the running pool. Verify
+they work OK.
+
+5. Run the low-level health-check for the non-running version.
+
+6. Enter the password, and click the button, to start a non-auto-start version.
+
+7. Watch the status page to ensur the number of processes in each pool rises to
+an appropriate level.
+
+8. Now stop that version again.
+
+9. Copy a new version of the code into the pool, and re-scan for available versions.
+
+10. Ensure the new version is listed under Non-running versions.
+
+11. Start it.
+
+12. Stop it.
+
+13. Delete that version from disc, re-scan, and ensure it disappears from the list.
+
+14. Copy in a new version, but with the wrong name (not matching the name given
+in process.conf.) E.g. a folder called "Copy of 2013060300". Verify that when
+you re-scan this folder is ignored.
+
+15. Use the Test form to evaluate something. (Ideally, go to a Moodle site, turn
+on CAS debugging, go to the healthcheck page, copy and paste one of the complex
+blocks of CAS command, paste that into the test form.)
+
+16. Repeat 14 with a different Pool version if possible. Verify form the output
+that the different version was really used.
+
+17. See if you can get it to time-out by using a 1 second Timeout, but you
+probably can't test this.
