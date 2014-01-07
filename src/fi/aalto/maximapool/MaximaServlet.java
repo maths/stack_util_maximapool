@@ -150,7 +150,7 @@ public class MaximaServlet extends HttpServlet {
 				+ "\",\"" + processConfig.killString.substring(processConfig.killString.length() / 2)
 				+ "\");\n";
 
-		healthcheckSendCommand("1+1;\n" + killStringGen, input, out);
+		healthcheckSendCommand("ATAlgEquiv(x^2-1,(x-1)*(x+1));\n" + killStringGen, input, out);
 		currentOutput = healthcheckWaitForOutput(processConfig.killString, output, currentOutput, out, startTime);
 
 		healthcheckSendCommand("quit();\n", input, out);
@@ -245,10 +245,10 @@ public class MaximaServlet extends HttpServlet {
 		out.write("<pre>" + firstOutput + "</pre>");
 		out.flush();
 
-		out.write("<p>Sending command: <b>1+1;</b>.</p>");
+		out.write("<p>Sending command: <b>ATAlgEquiv(x^2-1,(x-1)*(x+1));</b>.</p>");
 		out.flush();
 
-		mp.doAndDie("1+1;\n", 10000, "");
+		mp.doAndDie("ATAlgEquiv(x^2-1,(x-1)*(x+1));\n", 10000, "");
 		String secondOutput = mp.getOutput();
 		out.write("<pre>" + secondOutput.substring(firstOutput.length()) + "</pre>");
 		out.flush();
@@ -345,7 +345,7 @@ public class MaximaServlet extends HttpServlet {
 		out.write("<p><A href=\"?healthcheck=2\">Run the high-level health-check</a></p>");
 
 		out.write("<h3>Test form</h3>");
-		out.write("<p>Input something for evaluation</p>");
+		out.write("<p>Input something for evaluation.  You could try one of the following.  <ol><li><tt>1+1;</tt>  This is a trivial check that maxima does something.</li><li><tt>ATAlgEquiv(x^2-1,(x-1)*(x+1));</tt> This checks that STACK's libraries are loaded.  Expect <tt>[true,true,\"\",\"\"]</tt> as the response.</li></ol></p>");
 		out.write("<form method='post'><textarea name='input'></textarea><br/>Timeout (ms): <select name='timeout'><option value='1000'>1000</option><option value='2000'>2000</option><option value='3000' selected='selected'>3000</option><option value='4000'>4000</option><option value='5000'>5000</option></select><br/><input type='submit' value='Eval'/></form>");
 
 		out.write("<h3>Maxima pool configuration</h3>");
