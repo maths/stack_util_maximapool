@@ -207,7 +207,7 @@ public class ProcessPool {
 
 		status.put("Ready processes in the pool", "" + availableProcesses.size());
 		status.put("Total processes started", "" + processesStartedCount);
-		status.put("Current demand estimate", demandEstimate * 1000.0 + " Hz");
+		status.put("Current demand estimate", demandEstimate + " Hz");
 		status.put("Current start-up time estimate", startupTimeEstimate + " ms");
 
 		StringBuffer startupTimes = new StringBuffer(100);
