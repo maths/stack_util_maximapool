@@ -5,7 +5,7 @@ something like this: (only key files shown)
     gnuplot
     maxima                    # Actually, we use maxima-optimised, but this is present.
 
-/usr/share/tomcat6/webapps/
+/usr/share/tomcat6/webapps/ or /var/lib/tomcat6/webapps/
     MaximaPool.war            # The compiled code. This is what we upload.
     MaximaPool/               # Expanded version of the .war file. Mostly standard.
         META-INF/
