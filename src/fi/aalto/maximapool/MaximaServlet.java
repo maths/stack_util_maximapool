@@ -417,7 +417,7 @@ public class MaximaServlet extends HttpServlet {
 		if (mp.doAndDie(theInput, limit, plotUrlBase)) {
 			response.setStatus(HttpServletResponse.SC_OK);
 		} else {
-			response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR );
+			response.setStatus(416);
 		}
 
 		String out = mp.getOutput();
