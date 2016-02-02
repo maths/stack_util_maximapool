@@ -191,6 +191,13 @@ public class MaximaServlet extends HttpServlet {
 		if (maximaProcess.doAndDie(theInput, timeLimit, plotUrlBase)) {
 			response.setStatus(HttpServletResponse.SC_OK);
 		} else {
+			// Send a specific message to the STACK question type that the CAS
+			// calculation timed out.
+			// This HTTP status code (Requested Range not satisfiable) is definitely
+			// not 'right' since are not doing HTTP byte-serving with a Range header.
+			// but unfortuately there is no status code that means what we want.
+			// Therefore, we this 4xx status code that will not otherwise be used
+			// to singnal this case to STACK.
 			response.setStatus(416);
 		}
 
