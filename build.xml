@@ -3,10 +3,14 @@
 		MaximaPool.war creator
 	</description>
 
- 	<target name="dist">
+	<property name="target.java.version" value="${ant.java.version}"/>
+
+	<target name="dist">
+		<echo>Building for Java version: ${target.java.version}</echo>
 		<mkdir dir="build"/>
 		<copy file="servlet.conf" tofile="build/servlet.conf"/>
-		<javac srcdir="src" destdir="build" debug="on" classpath="lib/servlet-api.jar" includeAntRuntime="false"/>
+		<javac fork="yes" srcdir="src" destdir="build" debug="on" classpath="lib/servlet-api.jar"
+				includeAntRuntime="false" target="${target.java.version}" source="${target.java.version}"/>
 		<war destfile="MaximaPool.war" webxml="misc/web.xml" manifest="misc/MANIFEST.MF">
 			<classes dir="build"/>
 		</war>
