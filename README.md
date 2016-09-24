@@ -57,42 +57,42 @@ supporting Java 1.6.
 
 1. Start by [installing STACK](https://github.com/maths/moodle-qtype_stack/blob/master/doc/en/Installation/index.md)
 as normal and make sure that it works with the maxima you have installed.  We assume that 
-  1. the root of the Moodle site is $MOODLE. (This should have the Moodle config.php file in it.)
-  2. the moodle data is $MOODLEDATA (this is $CFG->dataroot in Moodle's config.php)
+  1. the root of the Moodle site is `$MOODLE`. (This should have the Moodle config.php file in it.)
+  2. the moodle data is `$MOODLEDATA` (this is `$CFG->dataroot` in Moodle's config.php)
 
-2. Download or clone the MaximaPool files to $MAXIMAPOOL=/var/lib/maxima.
+2. Download or clone the MaximaPool files to `$MAXIMAPOOL=/var/lib/maxima`.
 
-    git clone https://github.com/maths/stack_util_maximapool.git /var/lib/maxima
+   `git clone https://github.com/maths/stack_util_maximapool.git /var/lib/maxima`
 
-3. Copy $MAXIMAPOOL/doc/servlet-example.conf to $MAXIMAPOOL/servlet.conf and edit it.
+3. Copy `$MAXIMAPOOL/doc/servlet-example.conf` to `$MAXIMAPOOL/servlet.conf` and edit it.
 
-4. Copy $MAXIMAPOOL/doc/pool-example.conf to $MAXIMAPOOL/pool.conf and edit it.
+4. Copy `$MAXIMAPOOL/doc/pool-example.conf` to `$MAXIMAPOOL/pool.conf` and edit it.
 
-5. Look at the end of $MOODLE/question/type/stack/stack/maxima/stackmaxima.mac to find the version number (%%VERSION%%).
-   Create the directory  $MAXIMAPOOL/%%VERSION%%
+5. Look at the end of `$MOODLE/question/type/stack/stack/maxima/stackmaxima.mac` to find the version number (`%%VERSION%%`).
+   Create the directory  `$MAXIMAPOOL/%%VERSION%%`
 
-6. Copy the library of Maxima functions distributed with STACK in $MOODLE/question/type/stack/stack/maxima to the pool folder.
+6. Copy the library of Maxima functions distributed with STACK in `$MOODLE/question/type/stack/stack/maxima` to the pool folder.
  
-   cp -R $MOODLE/question/type/stack/stack/maxima/* $MAXIMAPOOL/%%VERSION%%/.
+   `cp -R $MOODLE/question/type/stack/stack/maxima/* $MAXIMAPOOL/%%VERSION%%/.`
 
 7. Copy the local maxima configuration files and maxima image to the same directory.
 
-   cp -R $MOODLEDATA/stack/* $MAXIMAPOOL/%%VERSION%%/.
+   `cp -R $MOODLEDATA/stack/* $MAXIMAPOOL/%%VERSION%%/.`
    
-8. Strip any final lines from $MAXIMAPOOL/%%VERSION%%/maximalocal.mac with load commands (such as `load("stackmaxima.mac")$` ).
+8. Strip any final lines from `$MAXIMAPOOL/%%VERSION%%/maximalocal.mac` with load commands (such as `load("stackmaxima.mac")$` ).
    to make sure libraries are not loaded. (These lines should not present if you are using the optimised version of Maxima anyway.)
 
 9. Run ant to build the servlet.
 
 10. Once the servlet has been built deploy the MaximaPool.war file to your servlet-container, with tomcat just copy it to the webapps-directory.
-    Tomcat is likley to be in /usr/share/tomcat8/ or /var/lib/tomcat8/
+    Tomcat is likley to be in `/usr/share/tomcat8/` or `/var/lib/tomcat8/`
     
-    cp MaximaPool.war $TOMCAT/webapps/.
+    `cp MaximaPool.war $TOMCAT/webapps/.`
     
-11. Change file permissions to give ownership of $MAXIMAPOOL and all files to the tomcat user.  For example
+11. Change file permissions to give ownership of `$MAXIMAPOOL` and all files to the tomcat user.  For example
 
-    chown -R tomcat8 /var/lib/maxima
-    chgrp -R tomcat8 /var/lib/maxima
+    `chown -R tomcat8 /var/lib/maxima`
+    `chgrp -R tomcat8 /var/lib/maxima`
 
 12. Open `$URL=localhost:8080/MaximaPool/MaximaPool` (or whatever url you have configured).
     Once all the files are in place, you can go into the MaximaPool status page to start and stop pools.
