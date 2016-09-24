@@ -1,25 +1,30 @@
 MaximaPool
 ==========
 
-Pooling solution for starting up maxima processes so that
-[moodle-qtype_stack](https://github.com/sangwinc/moodle-qtype_stack/) does not
-need to wait for them, this may save over 250ms each time you have to call maxima.
+These scrips were written as part of the STACK project. See https://github.com/maths/moodle-qtype_stack
+A demonstration STACK server is currently hosted at https://stack.maths.ed.ac.uk/demo/
+
+The MaximaPool creates a pool of Maxima processes.  This has a number of advantages on 
+large production sites, including the ability to put maxima processes on a separate 
+server, or servers.  Also, pooling helps starting up maxima processes so that
+STACK does not need to wait for them, this may save over 250ms each time you have to call maxima.
+
+This configuration is intended for large implementations, and these documents assume familiarity
+with installing STACK and using the ["optimised" mode](https://github.com/maths/moodle-qtype_stack/blob/master/doc/en/CAS/Optimising_Maxima.md). 
+If you are new to STACK, or just evaluating STACK, the MaximaPool is not needed.
 
 ## Basic overview
 
-Stack being PHP-application it has no way of handling pooling of maxima processes
-(i.e. no threads), maximapool is a Java-servlet doing just that and only that.
+Stack is a PHP-application and so it has no way of handling pooling of maxima processes (i.e. no threads). MaximaPool is a Java-servlet doing just that and only that.
 
-MaximaPool does not check what it inputs to the processes it is running nor does
-it really care what it is running so you may also use it for other programs but most importantly you MUST MAKE SURE IT IS SECURED no public access and so on.
-
+MaximaPool does not check what it inputs to the processes it is running nor does it really care what it is running so you may also use it for other programs but most importantly you MUST MAKE SURE IT IS SECURED with no public access.
 
 ## How it works
 
 Servlet keeps a set of processes running and uses them to evaluate commands it
-receives as requests, the servlet responds by outputting the output of the process
-one may define a timeout for the evaluation of the commands and in the case the
-servlet returns whatever the process has outputted at that point (should the
+receives as requests.  The servlet responds by returning the output of the process.
+One may define a timeout for the evaluation of the commands and in that case the
+servlet returns whatever the process has outputted up to that point (should the
 timeout be reached the response code will be 416 otherwise the normal code 200
 is used). The size of the pool kept may adapt to the frequency of the requests
 and the frequency can be throthled.
@@ -39,37 +44,69 @@ just make a GET-request for the servlet.
 
 ## Installation
 
-Get [tomcat6](http://tomcat.apache.org/) or some other servlet-container
-supportting Java 1.6.
+### Requirements.
 
-Get [maxima](http://maxima.sourceforge.net/) it is needed for Stack.
+1. Get [tomcat8](http://tomcat.apache.org/) or some other servlet-container
+supporting Java 1.6.
 
-Get [ant](http://ant.apache.org/) to build the servlet.
+2. Get [maxima](http://maxima.sourceforge.net/) (and gnuplot).
 
-Start by installing Stack as normal and make sure that it works with the maxima
-you have installed.
+3. Get [ant](http://ant.apache.org/) to build the servlet.
 
-Download or clone the MaximaPool files somewhere. Copy maximapool-example.conf
-to maximapool.conf and edit it have the correct configuration for your server.
-Once the configuration matches the needs of your server, run ant to build the servlet.
+### Instalation
 
-Once the servlet has been built deploy the MaximaPool.war file to your
-servlet-container, with tomcat just copy it to the webapps-directory.
+1. Start by [installing STACK](https://github.com/maths/moodle-qtype_stack/blob/master/doc/en/Installation/index.md)
+as normal and make sure that it works with the maxima you have installed.  We assume that 
+  1. the root of the Moodle site is $MOODLE. (This should have the Moodle config.php file in it.)
+  2. the moodle data is $MOODLEDATA (this is $CFG->dataroot in Moodle's config.php)
 
-With Stack check that tomcat or whatever user is running the servlet-container
-and thus maxima has the correct permissions to write to Stacks work directorys.
-Otherwise plots cannot be generated. Or setup the servlet in remote operating
-mode so that it can transmit possible plots in the responses.
+2. Download or clone the MaximaPool files to $MAXIMAPOOL=/var/lib/maxima.
 
-Open localhost:8080/MaximaPool/MaximaPool or whatever url you have configured
-and test the servlet by inputting something.
+    git clone https://github.com/maths/stack_util_maximapool.git /var/lib/maxima
 
-Change Stack to use MaximaPool and set the maxima-command in Stack to match
-the url where the servlet is running. Or use the Server mode with if you cannot
-setup the system so that it would write plots to the correct place.
+3. Copy $MAXIMAPOOL/doc/servlet-example.conf to $MAXIMAPOOL/servlet.conf and edit it.
 
-You may wish to clear the caches to check that the servlet actually works
-otherwise you may just get old values from cache instead of new ones from the servlet.
+4. Copy $MAXIMAPOOL/doc/pool-example.conf to $MAXIMAPOOL/pool.conf and edit it.
+
+5. Look at the end of $MOODLE/question/type/stack/stack/maxima/stackmaxima.mac to find the version number (%%VERSION%%).
+   Create the directory  $MAXIMAPOOL/%%VERSION%%
+
+6. Copy the library of Maxima functions distributed with STACK in $MOODLE/question/type/stack/stack/maxima to the pool folder.
+ 
+   cp -R $MOODLE/question/type/stack/stack/maxima/* $MAXIMAPOOL/%%VERSION%%/.
+
+7. Copy the local maxima configuration files and maxima image to the same directory.
+
+   cp -R $MOODLEDATA/stack/* $MAXIMAPOOL/%%VERSION%%/.
+   
+8. Strip any final lines from $MAXIMAPOOL/%%VERSION%%/maximalocal.mac with load commands (such as `load("stackmaxima.mac")$` ).
+   to make sure libraries are not loaded. (These lines should not present if you are using the optimised version of Maxima anyway.)
+
+9. Run ant to build the servlet.
+
+10. Once the servlet has been built deploy the MaximaPool.war file to your servlet-container, with tomcat just copy it to the webapps-directory.
+    Tomcat is likley to be in /usr/share/tomcat8/ or /var/lib/tomcat8/
+    
+    cp MaximaPool.war $TOMCAT/webapps/.
+    
+11. Change file permissions to give ownership of $MAXIMAPOOL and all files to the tomcat user.  For example
+
+    chown -R tomcat8 /var/lib/maxima
+    chgrp -R tomcat8 /var/lib/maxima
+
+12. Open `$URL=localhost:8080/MaximaPool/MaximaPool` (or whatever url you have configured).
+    Once all the files are in place, you can go into the MaximaPool status page to start and stop pools.
+
+13. SECURE THE POOL with http access controls to only accept connections from specific machines etc.!
+    
+Check that tomcat or whatever user is running the servlet-container (and thus maxima) has the correct permissions to write to the working directories.
+Otherwise plots cannot be generated. Or setup the servlet in remote operating mode so that it can transmit possible plots in the responses.
+
+To use MaximaPool use the browser to navigate to the STACK question type configuration page.
+Change STACK to use Maxima Pool and set the maxima-command in STACK to match the `$URL` where the servlet is running. 
+Or use the Server mode with if you cannot setup the system so that it would write plots to the correct place.
+
+Use the healthceck page to check this is working.  You probably need to clear the caches to check that the servlet actually works otherwise you may just get old values from cache instead of new ones from the servlet.
 
 ## License
 
