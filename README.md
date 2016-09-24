@@ -4,7 +4,7 @@ MaximaPool
 These scrips were written as part of the STACK project. See https://github.com/maths/moodle-qtype_stack
 A demonstration STACK server is currently hosted at https://stack.maths.ed.ac.uk/demo/
 
-The MaximaPool creates a pool of Maxima processes.  This has a number of advantages on 
+The MaximaPool creates a pool of maxima processes.  This has a number of advantages on 
 large production sites, including the ability to put maxima processes on a separate 
 server, or servers.  Also, pooling helps starting up maxima processes so that
 STACK does not need to wait for them, this may save over 250ms each time you have to call maxima.
@@ -27,7 +27,7 @@ One may define a timeout for the evaluation of the commands and in that case the
 servlet returns whatever the process has outputted up to that point (should the
 timeout be reached the response code will be 416 otherwise the normal code 200
 is used). The size of the pool kept may adapt to the frequency of the requests
-and the frequency can be throthled.
+and the frequency can be throttled.
 
 Processes have a lifetime and once that is up they will be ended and new ones
 started should the pool require new ones.
@@ -53,11 +53,11 @@ supporting Java 1.6.
 
 3. Get [ant](http://ant.apache.org/) to build the servlet.
 
-### Instalation
+### Installation
 
 1. Start by [installing STACK](https://github.com/maths/moodle-qtype_stack/blob/master/doc/en/Installation/index.md)
 as normal and make sure that it works with the maxima you have installed.  We assume that 
-  1. the root directory of the Moodle site on the server is `$MOODLE`. (This should have the Moodle `config.php` file in it.)
+  1. the root directory of the moodle site on the server is `$MOODLE`. (This should have the moodle `config.php` file in it.)
   2. the moodle data directory is `$MOODLEDATA` (this is `$CFG->dataroot` in Moodle's `config.php`).
 
 2. Download or clone the MaximaPool files, for example to `$MAXIMAPOOL=/var/lib/maxima`.
@@ -71,7 +71,7 @@ as normal and make sure that it works with the maxima you have installed.  We as
 5. Look at the end of `$MOODLE/question/type/stack/stack/maxima/stackmaxima.mac` to find the version number (`%%VERSION%%`).
    Create the directory  `$MAXIMAPOOL/%%VERSION%%`
 
-6. Copy the library of Maxima functions distributed with STACK in `$MOODLE/question/type/stack/stack/maxima` to the pool folder.
+6. Copy the library of maxima functions distributed with STACK in `$MOODLE/question/type/stack/stack/maxima` to the pool folder.
  
    `cp -R $MOODLE/question/type/stack/stack/maxima/* $MAXIMAPOOL/%%VERSION%%/.`
 
@@ -80,7 +80,7 @@ as normal and make sure that it works with the maxima you have installed.  We as
    `cp -R $MOODLEDATA/stack/* $MAXIMAPOOL/%%VERSION%%/.`
    
 8. Strip any final lines from `$MAXIMAPOOL/%%VERSION%%/maximalocal.mac` with load commands (such as `load("stackmaxima.mac")$` ).
-   to make sure libraries are not loaded. (These lines should not be present if you are using the optimised version of Maxima anyway.)
+   to make sure libraries are not loaded. (These lines should not be present if you are using the optimised version of maxima anyway.)
 
 9. Run ant to build the servlet.
 
@@ -104,10 +104,10 @@ Check that tomcat8 or (whatever user is running the servlet-container, and thus 
 Otherwise plots cannot be generated. Or setup the servlet in remote operating mode so that it can transmit possible plots in the responses.
 
 To use MaximaPool use the browser to navigate to the STACK question type configuration page.
-Change STACK to use Maxima Pool and set the maxima-command in STACK to match the `$URL` where the servlet is running. 
+Change STACK to use maxima Pool and set the maxima command (`qtype_stack | maximacommand`) in STACK to match the `$URL` where the servlet is running. 
 Or use the Server mode with if you cannot setup the system so that it would write plots to the correct place.
 
-Use the healthceck page to check this is working.  You probably need to clear the caches to check that the servlet actually works otherwise you may just get old values from cache instead of new ones from the servlet.
+Use the health check page to check this is working.  You probably need to clear the caches to check that the servlet actually works otherwise you may just get old values from cache instead of new ones from the servlet.
 
 ## License
 
