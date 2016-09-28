@@ -82,23 +82,25 @@ as normal and make sure that it works with the maxima you have installed.  We as
 8. Strip any final lines from `$MAXIMAPOOL/%%VERSION%%/maximalocal.mac` with load commands (such as `load("stackmaxima.mac")$` ).
    to make sure libraries are not loaded. (These lines should not be present if you are using the optimised version of maxima anyway.)
 
-9. Run ant to build the servlet.
+9. Copy `$MAXIMAPOOL/doc/process-example.conf` to `$MAXIMAPOOL/%%VERSION%%/process.conf` and edit it.
 
-10. Once the servlet has been built deploy the `MaximaPool.war` file to your servlet-container, with tomcat just copy it to the webapps-directory.
+10. Run ant to build the servlet.
+
+11. Once the servlet has been built deploy the `MaximaPool.war` file to your servlet-container, with tomcat just copy it to the webapps-directory.
     Tomcat is likley to be in `/usr/share/tomcat8/` or `/var/lib/tomcat8/`
     
     `cp MaximaPool.war $TOMCAT/webapps/.`
     
-11. Change file permissions to give ownership of `$MAXIMAPOOL` and all files to the tomcat user.  For example
+12. Change file permissions to give ownership of `$MAXIMAPOOL` and all files to the tomcat user.  For example
 
     `chown -R tomcat8 $MAXIMAPOOL`
 
     `chgrp -R tomcat8 $MAXIMAPOOL`
 
-12. Open `$URL=localhost:8080/MaximaPool/MaximaPool` (or whatever url you have configured).
+13. Open `$URL=localhost:8080/MaximaPool/MaximaPool` (or whatever url you have configured).
     Once all the files are in place, you can go into the MaximaPool status page to start, test and stop pools.
 
-13. SECURE THE POOL with http access controls to only accept connections from specific machines etc.!
+14. SECURE THE POOL with http access controls to only accept connections from specific machines etc.!
     
 Check that tomcat8 or (whatever user is running the servlet-container, and thus maxima) has the correct permissions to write to the working directories.
 Otherwise plots cannot be generated. Or setup the servlet in remote operating mode so that it can transmit possible plots in the responses.
