@@ -53,6 +53,13 @@ supporting Java 1.6.
 
 3. Get [ant](http://ant.apache.org/) to build the servlet.
 
+4. Get [jdk](http://openjdk.java.net/) to build the servlet.
+
+
+Note: In debian based distributions you can get the requirements installed by:
+
+`apt install tomcat8 ant openjdk-8-jdk git`
+
 ### Installation
 
 1. Start by [installing STACK](https://github.com/maths/moodle-qtype_stack/blob/master/doc/en/Installation/index.md)
@@ -60,7 +67,7 @@ as normal and make sure that it works with the maxima you have installed.  We as
   1. the root directory of the moodle site on the server is `$MOODLE`. (This should have the moodle `config.php` file in it.)
   2. the moodle data directory is `$MOODLEDATA` (this is `$CFG->dataroot` in Moodle's `config.php`).
 
-2. Download or clone the MaximaPool files, for example to `$MAXIMAPOOL=/var/lib/maxima`.
+2. Download or clone the MaximaPool files, for example to `$MAXIMAPOOL=/var/lib/maximapool`.
 
    `git clone https://github.com/maths/stack_util_maximapool.git $MAXIMAPOOL`
 
