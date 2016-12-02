@@ -118,6 +118,10 @@ Or use the Server mode with if you cannot setup the system so that it would writ
 
 Use the health check page to check this is working.  You probably need to clear the caches to check that the servlet actually works otherwise you may just get old values from cache instead of new ones from the servlet.
 
+## Troubleshoot
+
+If you open `localhost:8080/MaximaPool/MaximaPool` and you do not see text under the headings `Running versions` or `Non-running` then most probably your file layout was wrong. Have a look at `stack_util_maximapool/doc/server setup.txt`. Also make sure that you correct `command.line` inside `process.conf` if you use clisp which compiles into byte code (see the comments in `process.conf` two lines above).
+
 ## License
 
 MaximaPool is Licensed under whatever license
