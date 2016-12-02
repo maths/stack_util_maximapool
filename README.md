@@ -53,6 +53,13 @@ supporting Java 1.6.
 
 3. Get [ant](http://ant.apache.org/) to build the servlet.
 
+4. Get [jdk](http://openjdk.java.net/) to build the servlet.
+
+
+Note: In debian based distributions you can get the requirements installed by:
+
+`apt install tomcat8 ant openjdk-8-jdk git`
+
 ### Installation
 
 1. Start by [installing STACK](https://github.com/maths/moodle-qtype_stack/blob/master/doc/en/Installation/index.md)
