@@ -73,7 +73,7 @@ as normal and make sure that it works with the maxima you have installed.  We as
 
 6. Copy the library of maxima functions distributed with STACK in `$MOODLE/question/type/stack/stack/maxima` to the pool folder and edit it. 
 
-   `cp -R $MOODLE/question/type/stack/stack/maxima/* $MAXIMAPOOL/%%VERSION%%/.`
+   `cp -R $MOODLE/question/type/stack/stack/maxima/ $MAXIMAPOOL/%%VERSION%%/.`
 
 7. Copy the local maxima configuration files and maxima image to the same directory.
 
