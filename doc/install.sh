@@ -6,6 +6,15 @@ if [ "$(id -u)" != "0" ]; then
 fi
 DIRNAME="$(dirname "$(readlink -f "$0")")"
 
+echo "WARNING: this script is written for debian based distributions."
+echo "It will install tomcat8 and open-jdk8-jdk."
+read -p "Do you want to resume (y/n)? " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]
+then
+    exit
+fi
+
 #change file changeline toline addafter
 #changes file looks for changeline (regular expression) line by line
 #then if line is found the line is replaced by toline
