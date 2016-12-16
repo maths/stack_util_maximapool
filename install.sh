@@ -42,7 +42,13 @@ MAXIMAPOOL=/var/lib/maximapool
 
 mkdir $MAXIMAPOOL
 cd $MAXIMAPOOL
-git clone https://github.com/maths/stack_util_maximapool.git $MAXIMAPOOL
+if [ ! -e $MAXIMAPOOL/.git ];then
+       	git clone https://github.com/maths/stack_util_maximapool.git $MAXIMAPOOL
+else
+	echo "Git exist so not cloning but just updating"
+	git pull
+fi
+
 if [ -e $DIRNAME/maximamoodle3credentials.gitig ];then
 	source "$DIRNAME/maximamoodle3credentials.gitig"
 else
@@ -52,12 +58,12 @@ cat >"$DIRNAME/maximamoodle3credentials.gitig"<<EOF
 maximapoolpw=$maximapoolpw
 EOF
 fi
-cp $MAXIMAPOOL/doc/servlet.example.conf $MAXIMAPOOL/servlet.conf
+cp -i $MAXIMAPOOL/doc/servlet.example.conf $MAXIMAPOOL/servlet.conf
 
 change $MAXIMAPOOL/servlet.conf "directory.root" "directory.root = $MAXIMAPOOL/"
 change $MAXIMAPOOL/servlet.conf "admin.password" "admin.password = $maximapoolpw"
 
-cp $MAXIMAPOOL/doc/pool.example.conf $MAXIMAPOOL/pool.conf
+cp -i $MAXIMAPOOL/doc/pool.example.conf $MAXIMAPOOL/pool.conf
 
 #sed -n does not print exept when p command prints match
 MAXIMAVERSION=$( sed -n 's/stackmaximaversion\:\([0-9]*\).*/\1/p' $MOODLE/question/type/stack/stack/maxima/stackmaxima.mac)
@@ -66,7 +72,7 @@ echo "Maxima version: $MAXIMAVERSION"
 mkdir $MAXIMAPOOL/$MAXIMAVERSION
 cp -R $MOODLE/question/type/stack/stack/maxima $MAXIMAPOOL/$MAXIMAVERSION
 cp -R $MOODLEDATA/stack/* $MAXIMAPOOL/$MAXIMAVERSION
-cp $MAXIMAPOOL/doc/process.example.conf $MAXIMAPOOL/$MAXIMAVERSION/process.conf
+cp -i $MAXIMAPOOL/doc/process.example.conf $MAXIMAPOOL/$MAXIMAVERSION/process.conf
 
 sed -i "s/%%VERSION%%/$MAXIMAVERSION/" $MAXIMAPOOL/$MAXIMAVERSION/process.conf
 
