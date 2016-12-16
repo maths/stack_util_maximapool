@@ -39,7 +39,11 @@ function change {
 		if [ $addafter = "$" ]; then
 			sed -i "$ a$toline" $file;
 		else
-			sed -i "/$addafter/a$toline" $file;
+			if grep -q "$addafter" $file;then
+				sed -i "/$addafter/a$toline" $file;
+			else
+				sed -i "$ a$toline" $file;
+			fi
 		fi
 	fi
 }
