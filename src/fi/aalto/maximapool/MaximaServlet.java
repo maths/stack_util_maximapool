@@ -150,6 +150,7 @@ public class MaximaServlet extends HttpServlet {
 	@Override
 	protected void doPost(HttpServletRequest request, HttpServletResponse response)
 			throws ServletException, IOException {
+		request.setCharacterEncoding("UTF-8");
 		try {
 			if (request.getParameter("input") != null) {
 				doProcess(request, response);
@@ -179,7 +180,7 @@ public class MaximaServlet extends HttpServlet {
 	 * @throws IOException
 	 */
 	private void doProcess(HttpServletRequest request, HttpServletResponse response) throws IOException {
-
+		response.setCharacterEncoding("UTF-8");
 		String theInput = request.getParameter("input");
 		String configurationName = request.getParameter("version");
 		long timeLimit = getRequestLong(request,"timeout", 3000);
