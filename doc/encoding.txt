@@ -1,0 +1,17 @@
+Since 2017-10-28 MaximaPool assumes all requests to be UTF-8 encoded and 
+marks the response to be UTF-8.
+
+However what is written to the process and received from it still 
+depends on the Java environments settings. Basically, should it have 
+US-ASCII as "file.encoding" you will never get valid umlauts over your 
+runes.
+
+To test your setup simply try inputting this through the test interface:
+
+ s:"äöåé";
+ l:slength(s);
+
+The result should render those accents correctly and length as 4. If you 
+see "????" you are probably running on some ASCII and will want to fix 
+your servlet containers configuration by adding "-Dfile.encoding=UTF-8" 
+to JAVA_OPTS or similar.
