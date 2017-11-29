@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Enumeration;
 import java.util.Properties;
 
 /**
@@ -26,6 +27,11 @@ class ProcessConfiguration {
 	 * The command line to use to start a process.
 	 */
 	String commandLine = "maxima-optimised";
+
+	/**
+	 * Environment values to define.
+         */
+	Map<String, String> environment = new LinkedHashMap<String, String>();
 
 	/**
 	 * The output to look for so we know the process is ready to receive the
@@ -121,6 +127,13 @@ class ProcessConfiguration {
 				"startup.time.estimate", "" + startupTimeInitialEstimate));
 		demandInitialEstimate = Double.parseDouble(properties.getProperty(
 				"demand.estimate", "" + demandInitialEstimate));
+
+		for (Enumeration e = properties.propertyNames(); e.hasMoreElements();) {
+			String key = e.nextElement().toString();
+			if (key.startsWith("env.") && key.length() > 4) {
+				environment.put(key.substring(4), properties.getProperty(key, ""));
+			}
+		}
 	}
 
 	/**

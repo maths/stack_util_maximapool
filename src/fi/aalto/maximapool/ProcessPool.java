@@ -80,6 +80,9 @@ public class ProcessPool {
 		processBuilder.command(processConfig.commandLine.split(" "));
 		processBuilder.directory(processConfig.workingDirectory);
 		processBuilder.redirectErrorStream(true);
+		for (String key : processConfig.environment.keySet()) {
+			processBuilder.environment().put(key, processConfig.environment.get(key));
+		}
 	}
 
 	/**
