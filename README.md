@@ -71,9 +71,9 @@ as normal and make sure that it works with the maxima you have installed.  We as
 
    `git clone https://github.com/maths/stack_util_maximapool.git $MAXIMAPOOL`
 
-3. Copy `$MAXIMAPOOL/doc/servlet-example.conf` to `$MAXIMAPOOL/servlet.conf` and edit it.  There is not much to edit here.
+3. Copy `$MAXIMAPOOL/doc/servlet.example.conf` to `$MAXIMAPOOL/servlet.conf` and edit it.  There is not much to edit here.
 
-4. Copy `$MAXIMAPOOL/doc/pool-example.conf` to `$MAXIMAPOOL/pool.conf` and edit it.  You are likely to keep the default settings for a demo install. 
+4. Copy `$MAXIMAPOOL/doc/pool.example.conf` to `$MAXIMAPOOL/pool.conf` and edit it.  You are likely to keep the default settings for a demo install. 
 
 5. Look at the end of `$MOODLE/question/type/stack/stack/maxima/stackmaxima.mac` to find the version number (`%%VERSION%%`).
    Create the directory  `$MAXIMAPOOL/%%VERSION%%`
