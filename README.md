@@ -71,9 +71,9 @@ as normal and make sure that it works with the maxima you have installed.  We as
 
    `git clone https://github.com/maths/stack_util_maximapool.git $MAXIMAPOOL`
 
-3. Copy `$MAXIMAPOOL/doc/servlet-example.conf` to `$MAXIMAPOOL/servlet.conf` and edit it.  There is not much to edit here.
+3. Copy `$MAXIMAPOOL/doc/servlet.example.conf` to `$MAXIMAPOOL/servlet.conf` and edit it.  There is not much to edit here.
 
-4. Copy `$MAXIMAPOOL/doc/pool-example.conf` to `$MAXIMAPOOL/pool.conf` and edit it.  You are likely to keep the default settings for a demo install. 
+4. Copy `$MAXIMAPOOL/doc/pool.example.conf` to `$MAXIMAPOOL/pool.conf` and edit it.  You are likely to keep the default settings for a demo install. 
 
 5. Look at the end of `$MOODLE/question/type/stack/stack/maxima/stackmaxima.mac` to find the version number (`%%VERSION%%`).
    Create the directory  `$MAXIMAPOOL/%%VERSION%%`
@@ -89,7 +89,7 @@ as normal and make sure that it works with the maxima you have installed.  We as
 8. Strip any final lines from `$MAXIMAPOOL/%%VERSION%%/maximalocal.mac` with load commands (such as `load("stackmaxima.mac")$` ).
    to make sure libraries are not loaded. (These lines should not be present if you are using the optimised version of maxima anyway.)
 
-9. Copy `$MAXIMAPOOL/doc/process-example.conf` to `$MAXIMAPOOL/%%VERSION%%/process.conf` and edit it.  There is more here to edit than the previous files.  Note the location and the need to update `%%VERSION%%` throughout.
+9. Copy `$MAXIMAPOOL/doc/process.example.conf` to `$MAXIMAPOOL/%%VERSION%%/process.conf` and edit it.  There is more here to edit than the previous files.  Note the location and the need to update `%%VERSION%%` throughout.
 
 10. Run ant to build the servlet.
 
