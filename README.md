@@ -63,9 +63,7 @@ Note: In debian based distributions you can get the requirements installed by:
 ### Installation
 
 1. Start by [installing STACK](https://github.com/maths/moodle-qtype_stack/blob/master/doc/en/Installation/index.md)
-as normal and make sure that it works with the maxima you have installed.  We assume that 
-  1. the root directory of the moodle site on the server is `$MOODLE`. (This should have the moodle `config.php` file in it.)
-  2. the moodle data directory is `$MOODLEDATA` (this is `$CFG->dataroot` in Moodle's `config.php`).
+as normal and make sure that it works with the maxima you have installed.  We assume that (1) the root directory of the moodle site on the server is `$MOODLE`, (This should have the moodle `config.php` file in it.) and (2) the moodle data directory is `$MOODLEDATA` (this is `$CFG->dataroot` in Moodle's `config.php`).
 
 2. Download or clone the MaximaPool files, for example to `$MAXIMAPOOL=/var/lib/maximapool`.
 
@@ -120,7 +118,7 @@ Use the health check page to check this is working.  You probably need to clear 
 
 ## Troubleshoot
 
-If you open `localhost:8080/MaximaPool/MaximaPool` and you do not see text under the headings `Running versions` or `Non-running` then most probably your file layout was wrong. Have a look at `stack_util_maximapool/doc/server setup.txt`. Also make sure that you correct `command.line` inside `process.conf` if you use clisp which compiles into byte code (see the comments in `process.conf` two lines above).
+If you open `localhost:8080/MaximaPool/MaximaPool` and you do not see text under the headings `Running versions` or `Non-running` then most probably your file layout was wrong. Have a look at `stack_util_maximapool/doc/server-setup.txt`. Also make sure that you correct `command.line` inside `process.conf` if you use clisp which compiles into byte code (see the comments in `process.conf` two lines above).
 
 ## License
 

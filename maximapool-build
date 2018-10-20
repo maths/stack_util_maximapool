@@ -1,0 +1,163 @@
+#!/bin/bash
+#
+# Name: maximapool-build
+#
+# Description:
+#
+# Script for configuring and building the Maxima pool for a particular version of STACK.
+#
+# You must have Moodle/STACK running on the same server.
+# You must have qtype_stack | platform = unix-optimised  (i.e. be using the optimised mode)
+#
+# See: https://github.com/maths/stack_util_maximapool
+
+######################################################################
+# Changelog (newest first)
+######################################################################
+VERSION="001"
+# 001. 2018-10-20 csangwin      Follow the documented install process.
+
+echo Setting up Maxima pool.
+echo 
+
+# Set this to the location of these scripts.
+# MAXIMAPOOL=/var/lib/maximapool
+MAXIMAPOOL=/var/lib/maximapool
+
+# Tomcat 8 location
+# TOMCAT=/usr/share/tomcat8/ 
+# TOMCAT=/var/lib/tomcat8/
+TOMCAT=/var/lib/tomcat8
+
+# The root directory of the moodle site on the server is $MOODLE. (This should have the moodle config.php file in it.)
+MOODLE=/var/www/moodle
+
+# The moodle data directory which is $CFG->dataroot in Moodle's config.php.
+# We seek to find this automatically from Moodle's config file.
+MOODLEDATALINE=$(grep -i 'CFG->dataroot' $MOODLE/config.php)
+echo CFG dataroot found in $MOODLE/config.php
+echo $MOODLEDATALINE
+
+MOODLEDATAPATTERN="(\'.*\')"
+MATCHED=$(grep -oP $MOODLEDATAPATTERN <<< "$MOODLEDATALINE")
+MOODLEDATA=${MATCHED:1:-1}
+echo Using Moodle data directory:
+echo $MOODLEDATA
+echo
+
+# Or set it explicitly here.
+# MOODLEDATA=/var/data/moodle35
+
+# Find the STACK maxima version.
+STACKVERSIONLINE=$(grep -i 'stackmaximaversion:' $MOODLE/question/type/stack/stack/maxima/stackmaxima.mac)
+# This should all be a fixed length
+STACKVERSION=${STACKVERSIONLINE:19:-1}
+
+# Sanity check at this point
+if [ "$STACKVERSION" = "" ]; then
+    echo "Stack version is not defined: exiting."
+    exit 1
+else
+    echo "Found the STACK version: $STACKVERSION"
+fi
+
+# Ensure we have servlet.conf
+echo
+if [ -f $MAXIMAPOOL/servlet.conf ]; then
+   echo "The file $MAXIMAPOOL/servlet.conf already exists (continuing)."
+else
+   echo "The file $MAXIMAPOOL/servlet.conf is missing."
+   echo "Copy $MAXIMAPOOL/doc/servlet.example.conf to $MAXIMAPOOL/servlet.conf and edit it (including the password!)."
+   exit 1
+fi
+
+# Ensure we have pool.conf
+echo
+if [ -f $MAXIMAPOOL/pool.conf ]; then
+   echo "The file $MAXIMAPOOL/pool.conf already exists (continuing)."
+else
+   echo "The file $MAXIMAPOOL/pool.conf is missing, so using the default."
+   cp $MAXIMAPOOL/doc/pool.example.conf $MAXIMAPOOL/pool.conf
+fi
+
+echo
+# Make the directory
+if [ -d $MAXIMAPOOL/$STACKVERSION ]; then
+   echo "Directory $MAXIMAPOOL/$STACKVERSION already exists (which is ok..)."
+else
+   echo "Making $MAXIMAPOOL/$STACKVERSION"
+   mkdir $MAXIMAPOOL/$STACKVERSION
+fi
+
+# Copy all the maxima files
+cp -R $MOODLE/question/type/stack/stack/maxima/ $MAXIMAPOOL/$STACKVERSION/.
+
+# Copy all the data files
+cp -R $MOODLEDATA/stack/* $MAXIMAPOOL/$STACKVERSION/.
+
+# qtype_stack | maximacommand
+# How to call the optimized image on your system, in its original location (check it exists...).
+# Remove the "timeout" command, and update the paths.
+#  
+# E.g. with SBCL
+# /var/data/moodle35/stack/maxima_opt_auto
+# MAXIMACOMMAND=$MAXIMAPOOL/$STACKVERSION/maxima_opt_auto
+#
+# E.g. with clisp
+# /usr/lib/clisp-2.49/base/lisp.run -q -M /var/data/moodle35/stack/maxima_opt_auto.mem
+# MAXIMACOMMAND="/usr/lib/clisp-2.49/base/lisp.run -q -M $MAXIMAPOOL/$STACKVERSION/maxima_opt_auto.mem"
+#
+MAXIMACOMMAND=$MAXIMAPOOL/$STACKVERSION/maxima_opt_auto
+
+echo
+echo Can we start the Maxima image?
+echo Trying: $MAXIMACOMMAND
+MAXIMACOMMANDSTARTED=$($MAXIMACOMMAND <<< "quit();\n")
+if [[ $MAXIMACOMMANDSTARTED =~ 'Maxima restarted' ]]; then
+  echo "Maxima restarted: so continuing."
+else
+  echo "Maxima restart failed.  Please look up qtype_stack | maximacommand"
+  exit 1
+fi
+
+# Now create the process conf file.
+cp doc/process.example.conf $STACKVERSION/process.conf
+
+# Using ! characters as the break in sed, because / is used in the filenames.
+SEDREP="s!%%MAXIMACOMMAND%%!${MAXIMACOMMAND}!g"
+sed -i "${SEDREP}" $STACKVERSION/process.conf
+
+SEDREP="s!%%MAXIMAPOOL%%!${MAXIMAPOOL}!g"
+sed -i "${SEDREP}" $STACKVERSION/process.conf
+
+SEDREP="s!%%VERSION%%!${STACKVERSION}!g"
+sed -i "${SEDREP}" $STACKVERSION/process.conf
+
+# Run ant
+echo
+if [ -f $MAXIMAPOOL/MaximaPool.war ]; then
+  rm $MAXIMAPOOL/MaximaPool.war
+  echo Removing old MaximaPool.war
+fi
+echo Running ant....
+ant
+
+if [ -f $MAXIMAPOOL/MaximaPool.war ]; then
+  service tomcat8 stop
+  echo
+  echo Copying MaximaPool.war to $TOMCAT/webapps/.
+  cp MaximaPool.war $TOMCAT/webapps/.
+
+  chown -R tomcat8 $MAXIMAPOOL
+  chgrp -R tomcat8 $MAXIMAPOOL
+
+  service tomcat8 start
+else
+  echo $MAXIMAPOOL/MaximaPool.war is missing, so ant probably did not work...
+  exit 1
+fi
+
+echo All done.
+echo "Try localhost:8080/MaximaPool/MaximaPool (or whatever url you have configured)."
+
+
