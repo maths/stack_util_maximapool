@@ -18,15 +18,15 @@ VERSION="001"
 # 001. 2018-10-20 csangwin      Follow the documented install process.
 
 echo Setting up Maxima pool.
-echo 
+echo
 
 # Set this to the location of these scripts.
 # MAXIMAPOOL=/var/lib/maximapool
 MAXIMAPOOL=/var/lib/maximapool
 
 # Tomcat 8 location
-# TOMCAT=/usr/share/tomcat8/ 
-# TOMCAT=/var/lib/tomcat8/
+# TOMCAT=/usr/share/tomcat8
+# TOMCAT=/var/lib/tomcat8
 TOMCAT=/var/lib/tomcat8
 
 # The root directory of the moodle site on the server is $MOODLE. (This should have the moodle config.php file in it.)
@@ -98,25 +98,36 @@ cp -R $MOODLEDATA/stack/* $MAXIMAPOOL/$STACKVERSION/.
 # qtype_stack | maximacommand
 # How to call the optimized image on your system, in its original location (check it exists...).
 # Remove the "timeout" command, and update the paths.
-#  
+#
 # E.g. with SBCL
 # /var/data/moodle35/stack/maxima_opt_auto
-# MAXIMACOMMAND=$MAXIMAPOOL/$STACKVERSION/maxima_opt_auto
+# RAWMAXIMACOMMAND=$MAXIMAPOOL/$STACKVERSION/maxima_opt_auto
 #
 # E.g. with clisp
 # /usr/lib/clisp-2.49/base/lisp.run -q -M /var/data/moodle35/stack/maxima_opt_auto.mem
-# MAXIMACOMMAND="/usr/lib/clisp-2.49/base/lisp.run -q -M $MAXIMAPOOL/$STACKVERSION/maxima_opt_auto.mem"
+# RAWMAXIMACOMMAND="/usr/lib/clisp-2.49/base/lisp.run -q -M $MAXIMAPOOL/$STACKVERSION/maxima_opt_auto.mem"
 #
-MAXIMACOMMAND=$MAXIMAPOOL/$STACKVERSION/maxima_opt_auto
+# E.g. with GCL
+# /var/data/moodle35/stack/maxima_opt_auto -eval '(cl-user::run)'"
+# RAWMAXIMACOMMAND="$MAXIMAPOOL/$STACKVERSION/maxima_opt_auto -eval '(cl-user::run)'"
+
+RAWMAXIMACOMMAND=$MAXIMAPOOL/$STACKVERSION/maxima_opt_auto
+
+# An issue was found with running the optimised maxima image. The maxima command needs to be wrapped
+# within another script to preserve quotes and such things.
+echo $RAWMAXIMACOMMAND > $MAXIMAPOOL/$STACKVERSION/maxima_wrapped
+chmod a+x $MAXIMAPOOL/$STACKVERSION/maxima_wrapped
+MAXIMACOMMAND="$MAXIMAPOOL/$STACKVERSION/maxima_wrapped"
 
 echo
 echo Can we start the Maxima image?
 echo Trying: $MAXIMACOMMAND
 MAXIMACOMMANDSTARTED=$($MAXIMACOMMAND <<< "quit();\n")
-if [[ $MAXIMACOMMANDSTARTED =~ 'Maxima restarted' ]]; then
+if [[ $MAXIMACOMMANDSTARTED == *"Maxima restarted"* ]]; then
   echo "Maxima restarted: so continuing."
 else
   echo "Maxima restart failed.  Please look up qtype_stack | maximacommand"
+  echo $MAXIMACOMMANDSTARTED
   exit 1
 fi
 
@@ -134,6 +145,7 @@ SEDREP="s!%%VERSION%%!${STACKVERSION}!g"
 sed -i "${SEDREP}" $STACKVERSION/process.conf
 
 # Run ant
+# Remember to set an appropriate JAVA_HOME if you're getting java version issues.
 echo
 if [ -f $MAXIMAPOOL/MaximaPool.war ]; then
   rm $MAXIMAPOOL/MaximaPool.war
@@ -159,5 +171,3 @@ fi
 
 echo All done.
 echo "Try localhost:8080/MaximaPool/MaximaPool (or whatever url you have configured)."
-
-
