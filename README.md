@@ -76,18 +76,18 @@ as normal and make sure that it works with the maxima you have installed.  We as
 5. Look at the end of `$MOODLE/question/type/stack/stack/maxima/stackmaxima.mac` to find the version number (`%%VERSION%%`).
    Create the directory  `$MAXIMAPOOL/%%VERSION%%`
 
-6. Copy the library of maxima functions distributed with STACK in `$MOODLE/question/type/stack/stack/maxima` to the pool folder and edit it. 
+6. Copy the library of maxima functions, the local maxima configuration files and maxima image distributed with STACK in `$MOODLE/question/type/stack/stack/maxima` and `$MOODLEDATA/stack/` to the pool folder.
 
    `cp -R $MOODLE/question/type/stack/stack/maxima/ $MAXIMAPOOL/%%VERSION%%/.`
-
-7. Copy the local maxima configuration files and maxima image to the same directory.
-
-   `cp -R $MOODLEDATA/stack/* $MAXIMAPOOL/%%VERSION%%/.`
    
-8. Strip any final lines from `$MAXIMAPOOL/%%VERSION%%/maximalocal.mac` with load commands (such as `load("stackmaxima.mac")$` ).
-   to make sure libraries are not loaded. (These lines should not be present if you are using the optimised version of maxima anyway.)
+   `cp -R $MOODLEDATA/stack/* $MAXIMAPOOL/%%VERSION%%/.`
 
-9. Copy `$MAXIMAPOOL/doc/process.example.conf` to `$MAXIMAPOOL/%%VERSION%%/process.conf` and edit it.  There is more here to edit than the previous files.  Note the location and the need to update `%%VERSION%%` throughout.
+7. Strip any final lines from `$MAXIMAPOOL/%%VERSION%%/maximalocal.mac` with load commands (such as `load("stackmaxima.mac")$` ).
+   to make sure libraries are not loaded. (These lines should not be present if you are using the optimised version of maxima anyway.)
+   
+8. Please change in `$MAXIMAPOOL/%%VERSION%%/maximalocal.mac` the `file_search_maxima` and `file_search_lisp` paths where `$MOODLE/question/type/stack` is set, to `$MAXIMAPOOL/%%VERSION%%`.
+
+9. Copy `$MAXIMAPOOL/doc/process.example.conf` to `$MAXIMAPOOL/%%VERSION%%/process.conf` and edit it.  There is more here to edit than the previous files. Note the location and the need to update `%%VERSION%%` and `%%MAXIMAPOOL%%` throughout. Furthermore please adapt the `command.line`.
 
 10. Run ant to build the servlet.
 
