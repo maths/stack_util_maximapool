@@ -453,6 +453,7 @@ public class MaximaServlet extends HttpServlet {
 
 		healthcheckSendCommand("quit();\n", input, out);
 		input.close();
+		output.close();
 
 		HtmlUtils.writeParagraph(out, "Total time: " + (System.currentTimeMillis() - startTime) + " ms");
 		HtmlUtils.finishOutput(out);
